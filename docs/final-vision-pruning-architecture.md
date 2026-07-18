@@ -66,6 +66,48 @@ python scripts/benchmark_rollout_backends.py vllm \
   --output /tmp/vllm.json
 ```
 
+## Reproducing the acceptance run
+
+On a CNB GPU workspace, prepare the model and synthetic smoke data:
+
+```bash
+git clone https://cnb.cool/ai-models/Qwen/Qwen2.5-VL-3B-Instruct \
+  /root/models/Qwen2.5-VL-3B-Instruct
+python scripts/create_vision_opd_smoke_data.py \
+  --output-dir /root/opd-smoke-data --samples 16 --resolution 224
+```
+
+Validate real batch-2 rollout and direct three-step actor optimization first:
+
+```bash
+python scripts/gpu_e2e_smoke.py rollout \
+  --model /root/models/Qwen2.5-VL-3B-Instruct \
+  --output-dir /root/final-uniform-direct \
+  --selector uniform --keep-ratio 0.5 --prune-after-layer 15 \
+  --batch-size 2
+
+python scripts/gpu_e2e_smoke.py train \
+  --output-dir /root/final-uniform-direct --steps 3
+```
+
+Then run the complete verl path. CPU offload is explicitly disabled for the
+validated CNB PyTorch 2.10 image because its asynchronous offload path raised a
+CUDA invalid-argument error before pruning execution:
+
+```bash
+MODEL_PATH=/root/models/Qwen2.5-VL-3B-Instruct \
+TRAIN_FILE=/root/opd-smoke-data/train.parquet \
+OUTPUT_DIR=/root/final-uniform-ppo \
+KEEP_RATIO=0.5 SELECTOR=uniform PRUNE_AFTER_LAYER=15 \
+TOTAL_TRAINING_STEPS=3 SAVE_FREQ=3 RESUME_MODE=disable \
+bash scripts/run_vision_opd_10step_smoke.sh \
+  actor_rollout_ref.actor.fsdp_config.param_offload=False \
+  actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
+  actor_rollout_ref.ref.fsdp_config.param_offload=False
+
+python -m pytest tests/vision_token_pruning -q
+```
+
 ## Architecture
 
 ```mermaid
