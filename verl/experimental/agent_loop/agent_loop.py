@@ -34,7 +34,7 @@ from transformers import AutoProcessor, AutoTokenizer
 from verl.experimental.agent_loop.prometheus_utils import update_prometheus_config
 from verl.experimental.agent_loop.utils import resolve_config_path
 from verl.experimental.reward_loop import RewardLoopWorker
-from verl.models.vision_token_pruning.runtime import attach_selection_to_multi_modal_inputs
+from verl.models.vision_token_pruning.training import attach_selection_to_multi_modal_inputs
 from verl.protocol import DataProto
 from verl.single_controller.ray.base import RayResourcePool, RayWorkerGroup
 from verl.utils import hf_processor, hf_tokenizer

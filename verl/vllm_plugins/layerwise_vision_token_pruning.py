@@ -34,14 +34,12 @@ from vllm.v1.attention.backends.flash_attn import (
 )
 from vllm.v1.attention.backends.registry import AttentionBackendEnum, register_backend
 
-from verl.models.vision_token_pruning.protocol import compute_keep_count
-from verl.models.vision_token_pruning.selectors import select_visual_tokens
-from verl.vllm_plugins.vision_token_pruning import (
-    _decode_selection_metadata,
-    _encode_selection_metadata,
-    _get_keep_ratio,
-    _get_selector_name,
+from verl.models.vision_token_pruning.strategy import VisionTokenSelectionEngine
+from verl.models.vision_token_pruning.transport import (
+    decode_embedding_selection_metadata,
+    encode_embedding_selection_metadata,
 )
+from verl.vllm_plugins.vision_token_pruning_common import pruning_config_from_hf
 
 _FORWARD_CONTEXT_KEY = "verl_layerwise_vision_pruning"
 _LAYER_INDEX_PATTERN = re.compile(r"(?:^|\.)layers\.(\d+)(?:\.|$)")
@@ -337,14 +335,14 @@ class _LayerwisePruningMixin:
 
     def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
         super().__init__(vllm_config=vllm_config, prefix=prefix)
-        self._keep_ratio = _get_keep_ratio(self.config)
-        self._selector = _get_selector_name(self.config)
-        pruning_config = self.config.vision_token_pruning
-        self._prune_after_layer = int(pruning_config.get("prune_after_layer", -1))
-        if self._prune_after_layer < 0:
+        self._pruning_config = pruning_config_from_hf(self.config)
+        if not self._pruning_config.uses_layerwise_backend:
             raise ValueError("layerwise vLLM model requires prune_after_layer >= 0")
-        self._selection_seed = int(vllm_config.model_config.seed)
-        self._selection_counter = 0
+        self._prune_after_layer = self._pruning_config.prune_after_layer
+        self._selection_engine = VisionTokenSelectionEngine(
+            self._pruning_config,
+            seed=int(vllm_config.model_config.seed),
+        )
         self._pending_selection_metadata: list[torch.Tensor] = []
         self._pending_query_keep_mask: torch.Tensor | None = None
         self._pending_capture_values: torch.Tensor | None = None
@@ -358,7 +356,7 @@ class _LayerwisePruningMixin:
         num_computed_tokens: int,
     ):
         self._pending_selection_metadata.extend(
-            _decode_selection_metadata(embeddings)
+            decode_embedding_selection_metadata(embeddings)
             for embeddings in multimodal_embeddings
             if len(embeddings)
         )
@@ -483,22 +481,16 @@ class _LayerwisePruningMixin:
         merge_size = self.visual.spatial_merge_size
         output = []
         for embeddings, grid_thw in zip(image_embeds_split, image_grid_thw.tolist(), strict=True):
-            keep_count = compute_keep_count(len(embeddings), self._keep_ratio)
-            generator = torch.Generator(device=embeddings.device)
-            generator.manual_seed(self._selection_seed + self._selection_counter)
-            self._selection_counter += 1
-            kept_indices = select_visual_tokens(
-                self._selector,
-                len(embeddings),
-                keep_count,
-                device=embeddings.device,
-                generator=generator,
-                features=embeddings,
+            kept_indices = self._selection_engine.select(
+                embeddings,
                 grid_thw=grid_thw,
             )
             positions = compute_mrope_for_media(grid_thw, merge_size).to(embeddings.device)
             metadata = torch.zeros((len(embeddings), 2), dtype=embeddings.dtype, device=embeddings.device)
-            metadata[kept_indices] = _encode_selection_metadata(kept_indices, dtype=embeddings.dtype)
+            metadata[kept_indices] = encode_embedding_selection_metadata(
+                kept_indices,
+                dtype=embeddings.dtype,
+            )
             output.append(torch.cat([embeddings, positions, metadata], dim=1))
         return tuple(output)
 

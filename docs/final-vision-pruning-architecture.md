@@ -1,5 +1,9 @@
 # Final staged architecture for visual-token pruning
 
+> This staged document preserves the measurements from the preceding branch.
+> The current extensible protocol and launcher are documented in
+> `docs/vision-pruning-experiment-platform.md`.
+
 Validated branch: `stage/final-vision-pruning-architecture`.
 
 ## Decision
@@ -113,7 +117,7 @@ python -m pytest tests/vision_token_pruning -q
 ```mermaid
 flowchart LR
     A["Selector: built-in name or module:function"] --> B["Rollout backend: vLLM by default"]
-    B --> C["Selection protocol v2: selector, ratio, count, exact indices"]
+    B --> C["Selection protocol v3: configured strategy identity + exact indices"]
     C --> D["AgentLoop sample metadata"]
     D --> E["Transformers actor: validate and replay indices"]
     D --> F["Transformers OPD teacher: strip metadata, keep full image"]
@@ -122,15 +126,17 @@ flowchart LR
 
 There are four intentionally small boundaries:
 
-1. `selectors.py` owns only the algorithm that returns retained indices.
+1. `strategy.py` owns the request-based algorithm API and `selectors.py`
+   preserves legacy flat-call compatibility.
 2. The vLLM plugin owns physical rollout compaction and selection transport.
 3. `VisionTokenSelection` is the only rollout-to-training wire contract.
 4. The Transformers actor owns validation and exact replay; it never reruns an
    algorithm and the teacher never sees pruning metadata.
 
 Consequently, a selector cannot silently diverge between rollout and training.
-Protocol v2 records the selector name, keep ratio, original token count, and
-sorted retained indices. The actor checks all four before its forward pass.
+Protocol v3 records the selector name, canonical selector-options fingerprint,
+keep ratio, original token count, and sorted retained indices. The actor checks
+all fields before its forward pass.
 
 ## Adding an algorithm
 

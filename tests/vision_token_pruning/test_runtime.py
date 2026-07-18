@@ -2,7 +2,10 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from verl.models.vision_token_pruning.config import VisionTokenPruningConfig  # noqa: E402
+from verl.models.vision_token_pruning.config import (  # noqa: E402
+    VisionTokenPruningConfig,
+    compute_selector_fingerprint,
+)
 from verl.models.vision_token_pruning.protocol import VisionTokenSelection  # noqa: E402
 from verl.models.vision_token_pruning.runtime import (  # noqa: E402
     KEEP_MASK_KEY,
@@ -84,6 +87,28 @@ def test_actor_rejects_rollout_from_a_different_selector():
         )
 
 
+def test_actor_rejects_same_selector_with_different_options():
+    selection = VisionTokenSelection(
+        keep_ratio=0.5,
+        selector="uniform",
+        selector_fingerprint=compute_selector_fingerprint("uniform", {"offset": 1}),
+        original_visual_token_count=4,
+        kept_visual_indices=(0, 3),
+    )
+    inputs = attach_selection_to_multi_modal_inputs({}, selection.to_wire())
+
+    with pytest.raises(ValueError, match="strategy configuration"):
+        replay_rollout_selection_on_attention_mask(
+            torch.tensor([[99, 99, 99, 99]]),
+            torch.ones((1, 4), dtype=torch.long),
+            [inputs],
+            image_token_id=99,
+            expected_keep_ratio=0.5,
+            expected_selector="uniform",
+            expected_selector_kwargs={"offset": 2},
+        )
+
+
 def test_teacher_preparation_removes_all_pruning_protocol_fields():
     selection = VisionTokenSelection(
         keep_ratio=0.5,
@@ -140,3 +165,26 @@ def test_layerwise_actor_keeps_full_input_and_builds_post_boundary_mask():
         [0, 0, 1, 0, 1, 1],
     ]
     assert all(KEEP_MASK_KEY not in inputs for inputs in prepared.per_sample_multi_modal_inputs)
+
+
+def test_explicit_none_suppresses_prepared_layerwise_mask():
+    selection = VisionTokenSelection(
+        keep_ratio=0.5,
+        original_visual_token_count=2,
+        kept_visual_indices=(1,),
+    )
+    prepared = prepare_actor_pruning_inputs(
+        input_ids=torch.tensor([[99, 99]]),
+        attention_mask=torch.ones((1, 2), dtype=torch.long),
+        per_sample_multi_modal_inputs=[
+            attach_selection_to_multi_modal_inputs({}, selection.to_wire())
+        ],
+        image_token_id=99,
+        config=VisionTokenPruningConfig(enabled=True, keep_ratio=0.5, prune_after_layer=3),
+        apply_pruning=True,
+    )
+
+    assert prepared.layerwise_forward_kwargs(
+        VisionTokenPruningConfig(enabled=True, keep_ratio=0.5, prune_after_layer=3),
+        attention_mask=None,
+    ) == {}

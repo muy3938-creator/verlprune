@@ -28,7 +28,7 @@ from transformers.models.qwen2_vl.modeling_qwen2_vl import (
 )
 from transformers.utils import is_flash_attn_2_available, is_flash_attn_greater_or_equal_2_10
 
-from verl.models.vision_token_pruning.runtime import prune_visual_embeddings
+from verl.models.vision_token_pruning.embeddings import prune_visual_embeddings
 from verl.utils.device import is_npu_available
 from verl.utils.transformers_compat import is_transformers_version_in_range
 from verl.utils.ulysses import (

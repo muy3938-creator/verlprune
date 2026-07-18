@@ -6,6 +6,8 @@ import pytest
 torch = pytest.importorskip("torch")
 pytest.importorskip("vllm")
 
+from verl.models.vision_token_pruning.config import VisionTokenPruningConfig  # noqa: E402
+from verl.models.vision_token_pruning.strategy import VisionTokenSelectionEngine  # noqa: E402
 from verl.vllm_plugins.vision_token_pruning import (  # noqa: E402
     VerlPrunedQwen2_5VLForConditionalGeneration,
     VerlPrunedQwen3VLForConditionalGeneration,
@@ -32,10 +34,10 @@ def test_oot_models_expose_vllm_018_constructor_and_pruning_interface():
 def test_real_vllm_mrope_helper_physically_gathers_selected_embeddings(qwen3):
     dummy = SimpleNamespace(
         visual=SimpleNamespace(spatial_merge_size=2),
-        _keep_ratio=0.5,
-        _selector="random",
-        _selection_seed=1234,
-        _selection_counter=0,
+        _selection_engine=VisionTokenSelectionEngine(
+            VisionTokenPruningConfig(enabled=True, keep_ratio=0.5),
+            seed=1234,
+        ),
         _append_zero_position_axis=qwen3,
     )
     embeddings = torch.arange(32, dtype=torch.float32).reshape(4, 8)

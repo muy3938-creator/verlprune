@@ -1,7 +1,10 @@
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from typing import Any
 
-SELECTION_PROTOCOL_VERSION = 2
+from .config import compute_selector_fingerprint
+
+SELECTION_PROTOCOL_VERSION = 3
 
 
 def compute_keep_count(token_count: int, keep_ratio: float) -> int:
@@ -20,6 +23,7 @@ class VisionTokenSelection:
     original_visual_token_count: int
     kept_visual_indices: tuple[int, ...]
     selector: str = "random"
+    selector_fingerprint: str | None = field(default=None)
     version: int = SELECTION_PROTOCOL_VERSION
 
     def __post_init__(self) -> None:
@@ -34,6 +38,20 @@ class VisionTokenSelection:
             raise ValueError("original_visual_token_count must be positive")
         if not self.selector or not self.selector.strip():
             raise ValueError("selection selector must be a non-empty name")
+        object.__setattr__(self, "selector", self.selector.strip())
+        if self.selector_fingerprint is None:
+            object.__setattr__(
+                self,
+                "selector_fingerprint",
+                compute_selector_fingerprint(self.selector, {}),
+            )
+        assert self.selector_fingerprint is not None
+        if len(self.selector_fingerprint) != 64:
+            raise ValueError("selection selector_fingerprint must be a SHA-256 hex digest")
+        try:
+            int(self.selector_fingerprint, 16)
+        except ValueError as exc:
+            raise ValueError("selection selector_fingerprint must be a SHA-256 hex digest") from exc
         expected_count = compute_keep_count(self.original_visual_token_count, self.keep_ratio)
         if len(self.kept_visual_indices) != expected_count:
             raise ValueError(
@@ -51,6 +69,7 @@ class VisionTokenSelection:
             "version": self.version,
             "keep_ratio": self.keep_ratio,
             "selector": self.selector,
+            "selector_fingerprint": self.selector_fingerprint,
             "original_visual_token_count": self.original_visual_token_count,
             "kept_visual_indices": list(self.kept_visual_indices),
         }
@@ -61,6 +80,7 @@ class VisionTokenSelection:
             "version",
             "keep_ratio",
             "selector",
+            "selector_fingerprint",
             "original_visual_token_count",
             "kept_visual_indices",
         }
@@ -71,6 +91,7 @@ class VisionTokenSelection:
             version=int(value["version"]),
             keep_ratio=float(value["keep_ratio"]),
             selector=str(value["selector"]),
+            selector_fingerprint=str(value["selector_fingerprint"]),
             original_visual_token_count=int(value["original_visual_token_count"]),
             kept_visual_indices=tuple(int(index) for index in value["kept_visual_indices"]),
         )
@@ -82,21 +103,16 @@ def decode_rollout_selection(
     keep_ratio: float,
     original_visual_token_count: int,
     selector: str = "random",
+    selector_kwargs: Mapping[str, Any] | None = None,
 ) -> VisionTokenSelection:
-    """Decode positive 1-based indices carried by vLLM's replay channel."""
+    """Compatibility wrapper for the isolated vLLM capture transport."""
 
-    values = routed_experts.tolist() if hasattr(routed_experts, "tolist") else routed_experts
-    if values is None:
-        raise ValueError("vLLM visual-token pruning plugin did not return selection metadata")
-    try:
-        encoded = [int(token_layers[0][0]) for token_layers in values]
-    except (IndexError, TypeError) as exc:
-        raise ValueError("invalid routed_experts shape for visual-token selection") from exc
+    from .transport import decode_vllm_selection_capture
 
-    kept_indices = tuple(sorted({value - 1 for value in encoded if value > 0}))
-    return VisionTokenSelection(
+    return decode_vllm_selection_capture(
+        routed_experts,
         keep_ratio=keep_ratio,
         selector=selector,
+        selector_kwargs=selector_kwargs,
         original_visual_token_count=original_visual_token_count,
-        kept_visual_indices=kept_indices,
     )

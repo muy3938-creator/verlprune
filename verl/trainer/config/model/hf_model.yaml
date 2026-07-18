@@ -79,7 +79,7 @@ tiled_mlp:
   # number of shards to split the input. Higher values reduce peak memory but may slightly impact performance.
   num_shards: 4
 
-# Layer-0 random physical visual-token pruning.
+# Visual-token pruning experiment protocol.
 vision_token_pruning:
 
   # whether visual-token pruning is enabled
@@ -88,8 +88,11 @@ vision_token_pruning:
   # fraction of visual tokens retained by rollout selection
   keep_ratio: 0.5
 
-  # rollout-side selector registered in verl.models.vision_token_pruning.selectors
+  # rollout-side built-in name or importable module:function strategy
   selector: random
+
+  # JSON-compatible options passed only to the rollout-side strategy request
+  selector_kwargs: {}
 
   # -1 uses layer-0 physical pruning; N prunes attention/KV after decoder layer N
   prune_after_layer: -1

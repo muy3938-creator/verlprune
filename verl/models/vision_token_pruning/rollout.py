@@ -2,28 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any
 
+from .backends import VllmPruningLaunchOptions, build_vllm_pruning_launch_options
 from .config import VisionTokenPruningConfig, coerce_vision_token_pruning_config
-from .protocol import decode_rollout_selection
-
-PRUNED_VLLM_ARCHITECTURES = {
-    "qwen2_5_vl": "VerlPrunedQwen2_5VLForConditionalGeneration",
-    "qwen3_vl": "VerlPrunedQwen3VLForConditionalGeneration",
-}
-
-LAYERWISE_PRUNED_VLLM_ARCHITECTURES = {
-    "qwen2_5_vl": "VerlLayerwisePrunedQwen2_5VLForConditionalGeneration",
-}
-
-
-@dataclass(frozen=True)
-class VllmPruningLaunchOptions:
-    """Additional vLLM arguments required by the out-of-tree pruning model."""
-
-    hf_overrides: dict[str, Any]
-    cli_args: dict[str, Any]
+from .transport import decode_vllm_selection_capture
 
 
 class VisionTokenPruningRollout:
@@ -45,50 +28,10 @@ class VisionTokenPruningRollout:
         return self.config.enabled
 
     def build_launch_options(self, *, routing_replay_enabled: bool) -> VllmPruningLaunchOptions:
-        if not self.enabled:
-            return VllmPruningLaunchOptions(hf_overrides={}, cli_args={})
-        if routing_replay_enabled:
-            raise ValueError("vision token pruning cannot share routed_experts with rollout routing replay")
-        architectures = (
-            LAYERWISE_PRUNED_VLLM_ARCHITECTURES
-            if self.config.uses_layerwise_backend
-            else PRUNED_VLLM_ARCHITECTURES
-        )
-        try:
-            architecture = architectures[self.model_type]
-        except KeyError as exc:
-            implementation = "layerwise" if self.config.uses_layerwise_backend else "layer-0"
-            raise ValueError(
-                f"vLLM {implementation} visual-token pruning does not support model_type={self.model_type!r}"
-            ) from exc
-
-        pruning_config = {
-            "keep_ratio": self.config.keep_ratio,
-            "selector": self.config.selector,
-        }
-        if self.config.uses_layerwise_backend:
-            pruning_config["prune_after_layer"] = self.config.prune_after_layer
-
-        return VllmPruningLaunchOptions(
-            hf_overrides={
-                "architectures": [architecture],
-                "text_config": {"num_experts_per_tok": 1},
-                "vision_token_pruning": pruning_config,
-            },
-            cli_args={
-                "video_pruning_rate": 1.0 - self.config.keep_ratio,
-                "limit_mm_per_prompt": {"image": 1, "video": 0},
-                "enable_return_routed_experts": True,
-                **(
-                    {
-                        "enable_chunked_prefill": False,
-                        "enable_prefix_caching": False,
-                        "enforce_eager": True,
-                    }
-                    if self.config.uses_layerwise_backend
-                    else {}
-                ),
-            },
+        return build_vllm_pruning_launch_options(
+            self.config,
+            model_type=self.model_type,
+            routing_replay_enabled=routing_replay_enabled,
         )
 
     def inspect_request(
@@ -116,9 +59,10 @@ class VisionTokenPruningRollout:
             return None
         if original_token_count is None:
             raise RuntimeError("missing original image-token count for a pruned rollout")
-        return decode_rollout_selection(
+        return decode_vllm_selection_capture(
             routed_experts,
             keep_ratio=self.config.keep_ratio,
             original_visual_token_count=original_token_count,
             selector=self.config.selector,
+            selector_kwargs=self.config.selector_kwargs,
         ).to_wire()

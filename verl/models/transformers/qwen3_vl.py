@@ -24,7 +24,7 @@ from transformers.models.qwen3_vl.modeling_qwen3_vl import (
     Qwen3VLForConditionalGeneration,
 )
 
-from verl.models.vision_token_pruning.runtime import prune_visual_embedding_outputs
+from verl.models.vision_token_pruning.embeddings import prune_visual_embedding_outputs
 from verl.utils.transformers_compat import unpack_visual_output
 
 logger = logging.getLogger(__file__)

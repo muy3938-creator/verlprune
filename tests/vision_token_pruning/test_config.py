@@ -3,6 +3,7 @@ import pytest
 from verl.models.vision_token_pruning.config import (
     VisionTokenPruningConfig,
     coerce_vision_token_pruning_config,
+    compute_selector_fingerprint,
 )
 
 
@@ -48,3 +49,41 @@ def test_hydra_mapping_is_normalized_at_the_boundary():
     config = coerce_vision_token_pruning_config({"enabled": True, "keep_ratio": 0.5})
 
     assert config == VisionTokenPruningConfig(enabled=True, keep_ratio=0.5)
+
+
+def test_selector_fingerprint_is_stable_and_mapping_order_independent():
+    first = compute_selector_fingerprint("custom", {"alpha": 1, "nested": {"x": 2, "y": 3}})
+    second = compute_selector_fingerprint("custom", {"nested": {"y": 3, "x": 2}, "alpha": 1})
+
+    assert first == second
+    assert len(first) == 64
+
+
+def test_selector_kwargs_cannot_override_request_inputs():
+    with pytest.raises(ValueError, match="reserved inputs"):
+        VisionTokenPruningConfig(
+            enabled=True,
+            keep_ratio=0.5,
+            selector_kwargs={"features": "spoofed"},
+        )
+
+
+def test_selector_kwargs_reject_non_finite_json_values():
+    with pytest.raises(ValueError, match="JSON serializable"):
+        VisionTokenPruningConfig(
+            enabled=True,
+            keep_ratio=0.5,
+            selector_kwargs={"temperature": float("nan")},
+        )
+
+
+def test_backend_profile_is_explicit():
+    assert VisionTokenPruningConfig(enabled=True, keep_ratio=0.5).backend_name == "physical"
+    assert (
+        VisionTokenPruningConfig(
+            enabled=True,
+            keep_ratio=0.5,
+            prune_after_layer=3,
+        ).backend_name
+        == "layerwise"
+    )

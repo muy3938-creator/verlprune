@@ -29,6 +29,7 @@ def run_rollout(
     output_dir: Path,
     keep_ratio: float,
     selector: str,
+    selector_kwargs: dict,
     prune_after_layer: int,
     batch_size: int,
 ) -> None:
@@ -38,6 +39,7 @@ def run_rollout(
     os.environ.setdefault("VLLM_PLUGINS", "vision_opd_token_pruning")
     from vllm import LLM, SamplingParams
 
+    from verl.models.vision_token_pruning.config import VisionTokenPruningConfig
     from verl.models.vision_token_pruning.protocol import decode_rollout_selection
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -50,9 +52,13 @@ def run_rollout(
         if layerwise
         else "VerlPrunedQwen2_5VLForConditionalGeneration"
     )
-    pruning_config = {"keep_ratio": keep_ratio, "selector": selector}
-    if layerwise:
-        pruning_config["prune_after_layer"] = prune_after_layer
+    pruning_config = VisionTokenPruningConfig(
+        enabled=True,
+        keep_ratio=keep_ratio,
+        selector=selector,
+        selector_kwargs=selector_kwargs,
+        prune_after_layer=prune_after_layer,
+    ).to_backend_payload()
 
     llm = LLM(
         model=model_path,
@@ -108,6 +114,7 @@ def run_rollout(
             keep_ratio=keep_ratio,
             original_visual_token_count=original_visual_tokens,
             selector=selector,
+            selector_kwargs=selector_kwargs,
         )
         decoded_results.append((result, selection))
         print(
@@ -125,6 +132,7 @@ def run_rollout(
         "image_grid_thw": grid,
         "prune_after_layer": prune_after_layer,
         "selector": selector,
+        "selector_kwargs": selector_kwargs,
         "rollout_batch_size": batch_size,
     }
     (output_dir / "rollout.json").write_text(
@@ -137,6 +145,7 @@ def run_rollout(
     print(f"visual_tokens={original_visual_tokens}->{len(selection.kept_visual_indices)}")
     print(f"prune_after_layer={prune_after_layer}")
     print(f"selector={selector}")
+    print(f"selector_kwargs={selector_kwargs}")
     print(f"first_kept_indices={list(selection.kept_visual_indices[:8])}")
     print(f"last_kept_index={selection.kept_visual_indices[-1]}")
     print("E2E_STAGE_ROLLOUT=PASS")
@@ -216,6 +225,7 @@ def run_train_step(output_dir: Path, learning_rate: float, steps: int) -> None:
         image_token_id=image_token_id,
         expected_keep_ratio=selection.keep_ratio,
         expected_selector=selection.selector,
+        expected_selector_kwargs=record.get("selector_kwargs", {}),
     )
     compact_keep = student_attention_mask[0].bool()
     student_input_ids = full_input_ids if layerwise else full_input_ids[:, compact_keep]
@@ -378,6 +388,7 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, default=Path("/tmp/opd_e2e"))
     parser.add_argument("--keep-ratio", type=float, default=0.5)
     parser.add_argument("--selector", default="random")
+    parser.add_argument("--selector-kwargs", type=json.loads, default={})
     parser.add_argument("--prune-after-layer", type=int, default=-1)
     parser.add_argument("--learning-rate", type=float, default=1e-5)
     parser.add_argument("--steps", type=int, default=3)
@@ -389,6 +400,7 @@ def main() -> None:
             args.output_dir,
             args.keep_ratio,
             args.selector,
+            args.selector_kwargs,
             args.prune_after_layer,
             args.batch_size,
         )

@@ -16,6 +16,22 @@ def test_selection_round_trip():
 
     assert VisionTokenSelection.from_wire(selection.to_wire()) == selection
     assert selection.to_wire()["selector"] == "random"
+    assert len(selection.to_wire()["selector_fingerprint"]) == 64
+
+
+def test_selection_default_fingerprint_tracks_non_default_selector():
+    selection = VisionTokenSelection(
+        keep_ratio=0.5,
+        selector="uniform",
+        original_visual_token_count=4,
+        kept_visual_indices=(0, 3),
+    )
+
+    assert selection.selector_fingerprint != VisionTokenSelection(
+        keep_ratio=0.5,
+        original_visual_token_count=4,
+        kept_visual_indices=(0, 3),
+    ).selector_fingerprint
 
 
 def test_keep_count_rounds_and_never_drops_every_token():

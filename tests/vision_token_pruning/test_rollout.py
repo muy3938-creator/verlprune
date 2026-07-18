@@ -4,13 +4,14 @@ from verl.models.vision_token_pruning.config import VisionTokenPruningConfig
 from verl.models.vision_token_pruning.rollout import VisionTokenPruningRollout
 
 
-def make_rollout(*, enabled=True, prune_after_layer=-1, selector="random"):
+def make_rollout(*, enabled=True, prune_after_layer=-1, selector="random", selector_kwargs=None):
     return VisionTokenPruningRollout(
         VisionTokenPruningConfig(
             enabled=enabled,
             keep_ratio=0.5,
             prune_after_layer=prune_after_layer,
             selector=selector,
+            selector_kwargs=selector_kwargs or {},
         ),
         model_type="qwen2_5_vl",
         image_token_id=99,
@@ -24,6 +25,7 @@ def test_rollout_policy_owns_vllm_launch_overrides():
     assert options.hf_overrides["vision_token_pruning"] == {
         "keep_ratio": 0.5,
         "selector": "random",
+        "selector_kwargs": {},
     }
     assert options.cli_args["video_pruning_rate"] == 0.5
     assert options.cli_args["enable_return_routed_experts"] is True
@@ -60,6 +62,7 @@ def test_layerwise_rollout_selects_batch_capable_oot_backend():
     assert options.hf_overrides["vision_token_pruning"] == {
         "keep_ratio": 0.5,
         "selector": "random",
+        "selector_kwargs": {},
         "prune_after_layer": 15,
     }
     assert options.cli_args["enable_chunked_prefill"] is False
@@ -75,3 +78,18 @@ def test_rollout_passes_selector_to_vllm_and_selection_protocol():
 
     assert options.hf_overrides["vision_token_pruning"]["selector"] == "uniform"
     assert selection["selector"] == "uniform"
+
+
+def test_rollout_preserves_strategy_options_and_identity():
+    rollout = make_rollout(
+        selector="examples.vision_token_pruning.custom_strategies:feature_norm",
+        selector_kwargs={"offset": 2, "nested": {"b": 2, "a": 1}},
+    )
+    options = rollout.build_launch_options(routing_replay_enabled=False)
+    selection = rollout.decode_selection([[[1]], [[4]]], original_token_count=4)
+
+    assert options.hf_overrides["vision_token_pruning"]["selector_kwargs"] == {
+        "offset": 2,
+        "nested": {"b": 2, "a": 1},
+    }
+    assert len(selection["selector_fingerprint"]) == 64

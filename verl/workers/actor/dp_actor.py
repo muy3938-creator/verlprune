@@ -31,7 +31,7 @@ from torch.distributed.tensor import DTensor
 import verl.utils.torch_functional as verl_F
 from verl import DataProto
 from verl.models.vision_token_pruning.config import coerce_vision_token_pruning_config
-from verl.models.vision_token_pruning.runtime import prepare_actor_pruning_inputs
+from verl.models.vision_token_pruning.training import prepare_actor_pruning_inputs
 from verl.trainer.ppo.core_algos import agg_loss, compute_self_distillation_loss, get_policy_loss_fn, kl_penalty
 from verl.utils.attention_utils import index_first_axis, pad_input, rearrange, unpad_input
 from verl.utils.device import get_device_id, get_device_name
@@ -489,12 +489,10 @@ class DataParallelPPOActor(BasePPOActor):
                 input_ids_rmpad_rolled = input_ids_rmpad_rolled.squeeze(0)  # ((total_nnz / sp) + pad)
 
                 # only pass input_ids and position_ids to enable flash_attn_varlen
-                extra_args = {}
-                if layerwise_attention_mask_rmpad is not None:
-                    extra_args["vision_token_pruning_mask"] = layerwise_attention_mask_rmpad
-                    extra_args["vision_token_prune_after_layer"] = (
-                        self.vision_token_pruning_config.prune_after_layer
-                    )
+                extra_args = prepared_pruning_inputs.layerwise_forward_kwargs(
+                    self.vision_token_pruning_config,
+                    attention_mask=layerwise_attention_mask_rmpad,
+                )
                 if self.use_fused_kernels:
                     extra_args["temperature"] = temperature
                     extra_args["return_dict"] = True
@@ -708,12 +706,9 @@ class DataParallelPPOActor(BasePPOActor):
                         )
 
             else:  # not using rmpad and no ulysses sp
-                extra_args = {}
-                if layerwise_attention_mask is not None:
-                    extra_args["vision_token_pruning_mask"] = layerwise_attention_mask
-                    extra_args["vision_token_prune_after_layer"] = (
-                        self.vision_token_pruning_config.prune_after_layer
-                    )
+                extra_args = prepared_pruning_inputs.layerwise_forward_kwargs(
+                    self.vision_token_pruning_config
+                )
                 if self.use_fused_kernels:
                     extra_args["temperature"] = temperature
                     extra_args["return_dict"] = True

@@ -26,43 +26,12 @@ from vllm.multimodal.parse import MultiModalDataItems
 from vllm.multimodal.processing import PromptUpdate
 
 from verl.models.vision_token_pruning.protocol import compute_keep_count
-from verl.models.vision_token_pruning.selectors import select_visual_tokens
-
-_METADATA_RADIX = 256
-
-
-def _get_keep_ratio(hf_config: Any) -> float:
-    config = getattr(hf_config, "vision_token_pruning", None)
-    if not isinstance(config, dict):
-        raise ValueError("pruned vLLM model requires hf_config.vision_token_pruning")
-    keep_ratio = float(config.get("keep_ratio", 0.0))
-    if not 0.0 < keep_ratio < 1.0:
-        raise ValueError("pruned vLLM model requires keep_ratio in (0, 1)")
-    return keep_ratio
-
-
-def _get_selector_name(hf_config: Any) -> str:
-    config = getattr(hf_config, "vision_token_pruning", None)
-    if not isinstance(config, dict):
-        raise ValueError("pruned vLLM model requires hf_config.vision_token_pruning")
-    selector = str(config.get("selector", "random")).strip()
-    if not selector:
-        raise ValueError("pruned vLLM model requires a non-empty selector name")
-    return selector
-
-
-def _encode_selection_metadata(indices: torch.Tensor, *, dtype: torch.dtype) -> torch.Tensor:
-    """Encode positive one-based indices into two exact low-range columns."""
-
-    encoded = indices + 1
-    return torch.stack(
-        [encoded.remainder(_METADATA_RADIX), encoded.div(_METADATA_RADIX, rounding_mode="floor")],
-        dim=1,
-    ).to(dtype=dtype)
-
-
-def _decode_selection_metadata(annotated_embeddings: torch.Tensor) -> torch.Tensor:
-    return annotated_embeddings[:, -2].long() + annotated_embeddings[:, -1].long() * _METADATA_RADIX
+from verl.models.vision_token_pruning.strategy import VisionTokenSelectionEngine
+from verl.models.vision_token_pruning.transport import (
+    decode_embedding_selection_metadata,
+    encode_embedding_selection_metadata,
+)
+from verl.vllm_plugins.vision_token_pruning_common import pruning_config_from_hf
 
 
 class _PrunedImagePromptMixin:
@@ -73,7 +42,7 @@ class _PrunedImagePromptMixin:
         out_mm_kwargs: MultiModalKwargsItems,
     ) -> Sequence[PromptUpdate]:
         updates = list(super()._get_prompt_updates(mm_items, hf_processor_mm_kwargs, out_mm_kwargs))
-        keep_ratio = _get_keep_ratio(self.info.get_hf_config())
+        keep_ratio = pruning_config_from_hf(self.info.get_hf_config()).keep_ratio
         for update in updates:
             if update.modality != "image":
                 continue
@@ -107,9 +76,12 @@ class _PruningMixin:
 
     def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
         super().__init__(vllm_config=vllm_config, prefix=prefix)
-        self._keep_ratio = _get_keep_ratio(self.config)
-        self._selector = _get_selector_name(self.config)
-        expected_pruning_rate = 1.0 - self._keep_ratio
+        self._pruning_config = pruning_config_from_hf(self.config)
+        self._selection_engine = VisionTokenSelectionEngine(
+            self._pruning_config,
+            seed=int(vllm_config.model_config.seed),
+        )
+        expected_pruning_rate = 1.0 - self._pruning_config.keep_ratio
         if self.video_pruning_rate is None or abs(float(self.video_pruning_rate) - expected_pruning_rate) > 1e-8:
             raise ValueError(
                 "vLLM video_pruning_rate must equal 1 - vision_token_pruning.keep_ratio "
@@ -117,8 +89,6 @@ class _PruningMixin:
             )
         self._pending_selection_indices: list[torch.Tensor] = []
         self._pending_capture_values: torch.Tensor | None = None
-        self._selection_seed = int(vllm_config.model_config.seed)
-        self._selection_counter = 0
 
     def recompute_mrope_positions(
         self,
@@ -128,7 +98,7 @@ class _PruningMixin:
         num_computed_tokens: int,
     ):
         self._pending_selection_indices.extend(
-            _decode_selection_metadata(mm)
+            decode_embedding_selection_metadata(mm)
             for mm in multimodal_embeddings
             if len(mm)
         )
@@ -199,27 +169,15 @@ class _PruningMixin:
         merge_size = self.visual.spatial_merge_size
         output = []
         for embeddings, grid_thw in zip(image_embeds_split, image_grid_thw.tolist(), strict=True):
-            if len(embeddings) >= _METADATA_RADIX**2:
-                raise ValueError("visual-token selection metadata supports fewer than 65536 image tokens")
-
-            keep_count = compute_keep_count(len(embeddings), self._keep_ratio)
-            generator = torch.Generator(device=embeddings.device)
-            generator.manual_seed(self._selection_seed + self._selection_counter)
-            self._selection_counter += 1
-            kept_indices = select_visual_tokens(
-                self._selector,
-                len(embeddings),
-                keep_count,
-                device=embeddings.device,
-                generator=generator,
-                features=embeddings,
+            kept_indices = self._selection_engine.select(
+                embeddings,
                 grid_thw=grid_thw,
             )
             positions = compute_mrope_for_media(grid_thw, merge_size).to(embeddings.device)
             if self._append_zero_position_axis:
                 positions = torch.cat([positions, torch.zeros_like(positions[:, :1])], dim=1)
 
-            metadata = _encode_selection_metadata(kept_indices, dtype=embeddings.dtype)
+            metadata = encode_embedding_selection_metadata(kept_indices, dtype=embeddings.dtype)
             output.append(torch.cat([embeddings[kept_indices], positions[kept_indices], metadata], dim=1))
         return tuple(output)
 

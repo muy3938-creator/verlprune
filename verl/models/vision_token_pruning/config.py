@@ -1,6 +1,32 @@
+import hashlib
+import json
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
+
+_RESERVED_SELECTOR_KWARGS = {"token_count", "keep_count", "device", "generator", "features", "grid_thw"}
+
+
+def compute_selector_fingerprint(selector: str, selector_kwargs: Mapping[str, Any] | None = None) -> str:
+    """Return a stable identity for one fully configured selection strategy."""
+
+    normalized_name = selector.strip()
+    if not normalized_name:
+        raise ValueError("selector must be a non-empty name")
+    options = dict(selector_kwargs or {})
+    conflicts = _RESERVED_SELECTOR_KWARGS.intersection(options)
+    if conflicts:
+        raise ValueError(f"selector_kwargs cannot override reserved inputs: {sorted(conflicts)}")
+    try:
+        payload = json.dumps(
+            {"selector": normalized_name, "selector_kwargs": options},
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError("selector_kwargs must be JSON serializable") from exc
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 @dataclass
@@ -18,6 +44,7 @@ class VisionTokenPruningConfig:
     keep_ratio: float = 0.5
     prune_after_layer: int = -1
     selector: str = "random"
+    selector_kwargs: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not 0.0 < self.keep_ratio <= 1.0:
@@ -28,10 +55,31 @@ class VisionTokenPruningConfig:
             raise ValueError("vision token pruning prune_after_layer must be >= -1")
         if not self.selector or not self.selector.strip():
             raise ValueError("vision token pruning selector must be a non-empty name")
+        self.selector = self.selector.strip()
+        self.selector_kwargs = dict(self.selector_kwargs)
+        compute_selector_fingerprint(self.selector, self.selector_kwargs)
 
     @property
     def uses_layerwise_backend(self) -> bool:
         return self.enabled and self.prune_after_layer >= 0
+
+    @property
+    def backend_name(self) -> str:
+        return "layerwise" if self.uses_layerwise_backend else "physical"
+
+    @property
+    def selector_fingerprint(self) -> str:
+        return compute_selector_fingerprint(self.selector, self.selector_kwargs)
+
+    def to_backend_payload(self) -> dict[str, Any]:
+        payload = {
+            "keep_ratio": self.keep_ratio,
+            "selector": self.selector,
+            "selector_kwargs": dict(self.selector_kwargs),
+        }
+        if self.uses_layerwise_backend:
+            payload["prune_after_layer"] = self.prune_after_layer
+        return payload
 
 
 def coerce_vision_token_pruning_config(value: Any) -> VisionTokenPruningConfig:
