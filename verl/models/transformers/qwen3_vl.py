@@ -144,12 +144,26 @@ def _get_input_embeds(
     pixel_values_videos: Optional[torch.FloatTensor] = None,
     image_grid_thw: Optional[torch.LongTensor] = None,
     video_grid_thw: Optional[torch.LongTensor] = None,
+    vision_token_keep_mask: Optional[torch.BoolTensor] = None,
 ):
     inputs_embeds = model.get_input_embeddings()(input_ids)
     image_mask, video_mask = None, None
     if pixel_values is not None:
         pixel_values = pixel_values.type(model.visual.dtype)
         image_embeds, deepstack_image_embeds = unpack_visual_output(model.visual(pixel_values, grid_thw=image_grid_thw))
+
+        from verl.models.vision_token_pruning.runtime import prune_visual_embeddings
+
+        image_embeds = prune_visual_embeddings(image_embeds, vision_token_keep_mask)
+        if deepstack_image_embeds is not None:
+            deepstack_image_embeds = [
+                prune_visual_embeddings(
+                    embeddings,
+                    vision_token_keep_mask,
+                    name="deepstack vision_token_keep_mask",
+                )
+                for embeddings in deepstack_image_embeds
+            ]
         n_image_tokens = (input_ids == model.config.image_token_id).sum().item()
         n_image_features = image_embeds.shape[0]
         if n_image_tokens != n_image_features:
@@ -246,10 +260,18 @@ def qwen3_vl_base_forward(
     pixel_values_videos: Optional[torch.FloatTensor] = None,
     image_grid_thw: Optional[torch.LongTensor] = None,
     video_grid_thw: Optional[torch.LongTensor] = None,
+    vision_token_keep_mask: Optional[torch.BoolTensor] = None,
     **kwargs,
 ):
     input_kwargs = _get_input_embeds(
-        self, input_ids, attention_mask, pixel_values, pixel_values_videos, image_grid_thw, video_grid_thw
+        self,
+        input_ids,
+        attention_mask,
+        pixel_values,
+        pixel_values_videos,
+        image_grid_thw,
+        video_grid_thw,
+        vision_token_keep_mask,
     )  # avoid lora module having multiple keyword arguments
     kwargs.update(input_kwargs)
     return self.language_model(

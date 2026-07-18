@@ -18,6 +18,7 @@ from typing import Any, Optional
 from omegaconf import MISSING
 
 from verl.base_config import BaseConfig
+from verl.models.vision_token_pruning.config import VisionTokenPruningConfig
 from verl.trainer.config import CheckpointConfig
 from verl.utils.profiler.config import ProfilerConfig
 
@@ -306,6 +307,7 @@ class ActorConfig(BaseConfig):
     engine: BaseConfig = field(default_factory=BaseConfig)
     rollout_n: int = MISSING  # must be override by sampling config
     model_config: HFModelConfig = field(default_factory=BaseConfig)
+    vision_token_pruning: VisionTokenPruningConfig = field(default_factory=VisionTokenPruningConfig)
     router_replay: RouterReplayConfig = field(default_factory=RouterReplayConfig)
     self_distillation: SelfDistillationConfig = field(default_factory=SelfDistillationConfig)
 

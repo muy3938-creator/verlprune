@@ -29,6 +29,8 @@ pip install flash-attn --no-build-isolation
 pip install causal-conv1d==1.6.1 --no-build-isolation
 ```
 
+The pinned pair is `vllm==0.18.0` with `transformers==4.57.6`; vLLM 0.18 requires Transformers 4.x (`>=4.56,<5`).
+
 ## Quick Start
 
 ### 1. Deployment
@@ -97,6 +99,38 @@ bash scripts/run_vision_opd.sh
 ```
 
 Key hyperparameters can be edited at the top of the script. See the script for the full configuration.
+
+#### Layer-0 random visual-token pruning
+
+The baseline physically retains a random subset of Qwen2.5-VL or Qwen3-VL image tokens before decoder layer 0. The
+final visual token is always retained as the MRoPE anchor. vLLM returns the exact retained indices with each rollout;
+the actor reuses those indices to remove the same image tokens before its FlashAttention varlen forward. The OPD
+teacher remains unpruned.
+
+Set `MODEL_PATH` to a Qwen2.5-VL or Qwen3-VL checkpoint and edit these values in `scripts/run_vision_opd.sh`:
+
+```bash
+VISION_TOKEN_PRUNING_ENABLED=True
+VISION_TOKEN_KEEP_RATIO=0.5
+```
+
+This intentionally small baseline supports exactly one image per rollout, no video, and `layer=0` only. Actor
+training requires `use_remove_padding=True` and fails immediately when the rollout selection is missing or does not
+match the configured keep ratio. Run `pip install -e .` once so vLLM can discover the bundled model plugin.
+
+For accelerated inference after training, serve a Qwen2.5-VL checkpoint with the same physical-pruning model but
+without the training-only selection return channel:
+
+```bash
+vllm serve /path/to/merged-checkpoint \
+    --hf-overrides '{"architectures":["VerlRandomPrunedQwen2_5VLForConditionalGeneration"],"vision_token_pruning":{"keep_ratio":0.5}}' \
+    --video-pruning-rate 0.5 \
+    --limit-mm-per-prompt '{"image":1,"video":0}'
+```
+
+For Qwen3-VL, replace the architecture with `VerlRandomPrunedQwen3VLForConditionalGeneration`. The
+`video-pruning-rate` value activates vLLM's multimodal pruning path; for this image-only baseline it must equal
+`1 - keep_ratio`.
 
 ### 3. Merge Checkpoints
 

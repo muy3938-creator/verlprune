@@ -20,6 +20,7 @@ Single Process Actor
 import logging
 import os
 import time
+from collections.abc import Mapping
 from types import SimpleNamespace
 from typing import Optional
 
@@ -30,6 +31,7 @@ from torch.distributed.tensor import DTensor
 
 import verl.utils.torch_functional as verl_F
 from verl import DataProto
+from verl.models.vision_token_pruning.config import VisionTokenPruningConfig
 from verl.trainer.ppo.core_algos import agg_loss, compute_self_distillation_loss, get_policy_loss_fn, kl_penalty
 from verl.utils.attention_utils import index_first_axis, pad_input, rearrange, unpad_input
 from verl.utils.device import get_device_id, get_device_name
@@ -81,9 +83,18 @@ class DataParallelPPOActor(BasePPOActor):
         self.actor_module = actor_module
         self.actor_optimizer = actor_optimizer
         self.teacher_module: Optional[nn.Module] = None
+        pruning_config = getattr(config, "vision_token_pruning", None)
+        if isinstance(pruning_config, Mapping):
+            pruning_config = VisionTokenPruningConfig(**dict(pruning_config))
+        self.vision_token_pruning_config = pruning_config
+        self.vision_token_pruning_enabled = bool(
+            actor_optimizer is not None and pruning_config is not None and pruning_config.enabled
+        )
         role = "Ref" if actor_optimizer is None else "Actor"
 
         self.use_remove_padding = self.config.get("use_remove_padding", False)
+        if self.vision_token_pruning_enabled and not self.use_remove_padding:
+            raise ValueError("physical visual-token pruning requires actor.use_remove_padding=True")
         if torch.distributed.get_rank() == 0:
             print(f"{role} use_remove_padding={self.use_remove_padding}")
         self.use_fused_kernels = self.config.get("use_fused_kernels", False)
@@ -305,6 +316,7 @@ class DataParallelPPOActor(BasePPOActor):
         distill_topk: Optional[int] = None,
         topk_indices: Optional[torch.Tensor] = None,
         module: Optional[nn.Module] = None,
+        apply_vision_token_pruning: Optional[bool] = None,
     ) -> dict[str, torch.Tensor]:
         """
         Returns:
@@ -327,11 +339,14 @@ class DataParallelPPOActor(BasePPOActor):
             raise ValueError("Logit distillation requires disabling fused kernels.")
 
         model = module or self.actor_module
+        if apply_vision_token_pruning is None:
+            apply_vision_token_pruning = self.vision_token_pruning_enabled
 
         # PrefixGrouper path for shared-prefix optimization
         if self.use_prefix_grouper:
             can_use_pg = (
                 not self.use_remove_padding
+                and not apply_vision_token_pruning
                 and not self.use_ulysses_sp
                 and not self.use_fused_kernels
                 and not self.use_dynamic_bsz
@@ -353,15 +368,49 @@ class DataParallelPPOActor(BasePPOActor):
 
         response_length = micro_batch["responses"].size(-1)
         multi_modal_inputs = {}
+        per_sample_multi_modal_inputs = []
         if "multi_modal_inputs" in micro_batch.keys():
+            from verl.models.vision_token_pruning.runtime import (
+                strip_pruning_metadata,
+                strip_selection_metadata,
+            )
             from verl.utils.model import extract_multi_modal_inputs
+            from verl.utils.tensordict_utils import unwrap_non_tensor_data
 
-            multi_modal_inputs = extract_multi_modal_inputs(micro_batch["multi_modal_inputs"])
+            per_sample_multi_modal_inputs = [
+                unwrap_non_tensor_data(inputs) if inputs is not None else None
+                for inputs in micro_batch["multi_modal_inputs"]
+            ]
+            model_multi_modal_inputs = [
+                (
+                    strip_selection_metadata(inputs)
+                    if apply_vision_token_pruning
+                    else strip_pruning_metadata(inputs)
+                )
+                if inputs is not None
+                else None
+                for inputs in per_sample_multi_modal_inputs
+            ]
+            multi_modal_inputs = extract_multi_modal_inputs(model_multi_modal_inputs)
 
         with torch.autocast(device_type=self.device_name, dtype=self.param_dtype):
             input_ids = micro_batch["input_ids"]
             batch_size, seqlen = input_ids.shape
             attention_mask = micro_batch["attention_mask"]
+            if apply_vision_token_pruning:
+                from verl.models.vision_token_pruning.runtime import apply_rollout_pruning_to_attention_mask
+
+                model_config = getattr(model, "module", model).config
+                image_token_id = getattr(model_config, "image_token_id", None)
+                if image_token_id is None:
+                    raise ValueError("vision token pruning requires model.config.image_token_id")
+                attention_mask = apply_rollout_pruning_to_attention_mask(
+                    input_ids,
+                    attention_mask,
+                    per_sample_multi_modal_inputs,
+                    image_token_id=image_token_id,
+                    expected_keep_ratio=self.vision_token_pruning_config.keep_ratio,
+                )
             position_ids = micro_batch["position_ids"]
             response_start_idx = micro_batch.get("response_start_idx")
             if response_start_idx is not None:
@@ -1034,6 +1083,7 @@ class DataParallelPPOActor(BasePPOActor):
                                 distill_topk=distill_topk,
                                 topk_indices=student_topk_indices,
                                 module=teacher_model,
+                                apply_vision_token_pruning=False,
                             )
                             teacher_forward_time = time.perf_counter() - teacher_forward_start
                         stage_wall_time_totals["timing_s/update_actor/teacher_forward"] += teacher_forward_time

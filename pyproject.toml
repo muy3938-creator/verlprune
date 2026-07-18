@@ -22,6 +22,9 @@ requires-python = ">=3.10"
 
 dependencies = []
 
+[project.entry-points."vllm.general_plugins"]
+vision_opd_token_pruning = "verl.vllm_plugins.register:register_vision_token_pruning_models"
+
 # -------------------------------
 # tool.ruff - Linting configuration
 # -------------------------------

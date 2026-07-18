@@ -37,6 +37,8 @@ class TokenOutput(BaseModel):
     """logprobs of response token ids"""
     routed_experts: Optional[Any] = None
     """routed experts of response token ids"""
+    vision_token_selection: Optional[dict[str, Any]] = None
+    """Exact visual-token subset physically retained by the rollout engine."""
     stop_reason: Optional[str] = None
     """stop reason: 'completed', 'aborted', or None for unknown"""
 

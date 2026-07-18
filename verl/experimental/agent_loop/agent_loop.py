@@ -175,8 +175,8 @@ class _InternalAgentLoopOutput(AgentLoopOutput):
     """Padded log probabilities for the response tokens."""
     routed_experts: Optional[torch.Tensor] = None
     """Padded routed experts for the total tokens."""
-    multi_modal_inputs: Optional[dict[str, torch.Tensor]] = None
-    """Multi-modal inputs for processors (e.g., pixel_values, image_grid_thw)."""
+    multi_modal_inputs: Optional[dict[str, Any]] = None
+    """Tensor processor inputs plus optional non-tensor rollout metadata."""
     extra_fields: dict[str, Any] = {}
     """Extra fields for dynamic addition."""
 
@@ -687,6 +687,14 @@ class AgentLoopWorker:
             routed_experts[:, start_pos:end_pos] = experts_tensor.unsqueeze(0)
 
         multi_modal_inputs = self._compute_multi_modal_inputs(output, input_ids)
+        from verl.models.vision_token_pruning.runtime import (
+            SELECTION_WIRE_KEY,
+            attach_selection_to_multi_modal_inputs,
+        )
+
+        selection_wire = output.extra_fields.get(SELECTION_WIRE_KEY)
+        if selection_wire is not None:
+            multi_modal_inputs = attach_selection_to_multi_modal_inputs(multi_modal_inputs, selection_wire)
         position_ids = self._compute_position_ids(input_ids, attention_mask, multi_modal_inputs)
         await self._compute_score(
             output,

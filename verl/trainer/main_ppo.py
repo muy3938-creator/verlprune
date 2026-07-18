@@ -179,7 +179,14 @@ class TaskRunner:
         else:
             raise NotImplementedError
 
-        actor_role = Role.ActorRolloutRef if self_distillation_needs_ref else Role.ActorRollout
+        # A ``current`` teacher reuses the actor weights and only changes the
+        # multimodal inputs/pruning mode for its no-grad forward pass.  Marking
+        # that worker as ActorRolloutRef makes the legacy worker eagerly build a
+        # second full reference model even though it is never used as the OPD
+        # teacher.  Keep ActorRolloutRef for sources that genuinely need a
+        # separate teacher module (legacy/fixed).
+        self_distillation_needs_separate_teacher = self_distillation_needs_ref and teacher_model_source != "current"
+        actor_role = Role.ActorRolloutRef if self_distillation_needs_separate_teacher else Role.ActorRollout
         self.role_worker_mapping[actor_role] = ray.remote(actor_rollout_cls)
         self.mapping[actor_role] = "global_pool"
         return actor_rollout_cls, ray_worker_group_cls

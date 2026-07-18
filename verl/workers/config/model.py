@@ -19,6 +19,7 @@ from omegaconf import MISSING
 from transformers import AutoConfig
 
 from verl.base_config import BaseConfig
+from verl.models.vision_token_pruning.config import VisionTokenPruningConfig
 from verl.utils import hf_processor, hf_tokenizer
 from verl.utils.chat_template import resolve_custom_chat_template
 from verl.utils.fs import copy_to_local
@@ -101,6 +102,8 @@ class HFModelConfig(BaseConfig):
 
     # TiledMLP configuration for memory-efficient MLP computation
     tiled_mlp: dict = field(default_factory=lambda: {"enabled": False, "num_shards": 4})
+
+    vision_token_pruning: VisionTokenPruningConfig = field(default_factory=VisionTokenPruningConfig)
 
     architectures: Optional[list[str]] = None
 

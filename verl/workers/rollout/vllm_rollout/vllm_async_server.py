@@ -44,6 +44,7 @@ from vllm.v1.engine.core import EngineCoreProc
 from vllm.v1.engine.utils import CoreEngineProcManager
 from vllm.v1.executor.abstract import Executor
 
+from verl.models.vision_token_pruning.protocol import decode_rollout_selection
 from verl.single_controller.ray import RayClassWithInitArgs
 from verl.utils.config import omega_conf_to_dataclass
 from verl.utils.vllm.vllm_fp8_utils import apply_vllm_fp8_patches
@@ -203,7 +204,15 @@ class vLLMHttpServer:
 
         self.config: RolloutConfig = omega_conf_to_dataclass(config)
         self.model_config: HFModelConfig = omega_conf_to_dataclass(model_config, dataclass_type=HFModelConfig)
-        self.config.max_model_len = get_max_position_embeddings(self.model_config.hf_config)
+        # Respect an explicit rollout limit.  Small smoke runs and memory
+        # constrained jobs intentionally choose a value below the checkpoint's
+        # advertised context window; overwriting it here can make vLLM reserve
+        # KV cache for (for example) 128K tokens and fail before serving.
+        hf_max_model_len = get_max_position_embeddings(self.model_config.hf_config)
+        if self.config.max_model_len is None:
+            self.config.max_model_len = hf_max_model_len
+        else:
+            self.config.max_model_len = min(self.config.max_model_len, hf_max_model_len)
         self.rollout_mode = rollout_mode
         self.workers = workers
 
@@ -364,7 +373,28 @@ class vLLMHttpServer:
                 }
             )
 
-        if self.config.enable_rollout_routing_replay:
+        pruning_config = self.model_config.vision_token_pruning
+        if pruning_config.enabled:
+            if self.config.enable_rollout_routing_replay:
+                raise ValueError("vision token pruning cannot share routed_experts with rollout routing replay")
+            model_type = self.model_config.hf_config.model_type
+            pruned_architectures = {
+                "qwen2_5_vl": "VerlRandomPrunedQwen2_5VLForConditionalGeneration",
+                "qwen3_vl": "VerlRandomPrunedQwen3VLForConditionalGeneration",
+            }
+            if model_type not in pruned_architectures:
+                raise ValueError(f"vLLM visual-token pruning does not support model_type={model_type!r}")
+            hf_overrides.update(
+                {
+                    "architectures": [pruned_architectures[model_type]],
+                    "text_config": {"num_experts_per_tok": 1},
+                    "vision_token_pruning": {"keep_ratio": pruning_config.keep_ratio},
+                }
+            )
+            args["video_pruning_rate"] = 1.0 - pruning_config.keep_ratio
+            args["limit_mm_per_prompt"] = {"image": 1, "video": 0}
+            args["enable_return_routed_experts"] = True
+        elif self.config.enable_rollout_routing_replay:
             args.update({"enable_return_routed_experts": True})
 
         server_args = ["serve", self.model_config.local_path] + build_cli_args_from_config(args)
@@ -501,6 +531,15 @@ class vLLMHttpServer:
         existing_bad_words = sampling_params.pop("bad_words", None) or []
         sampling_params["bad_words"] = list(dict.fromkeys([*existing_bad_words, *VISION_SPECIAL_TOKENS]))
         sampling_params = SamplingParams(max_tokens=max_tokens, **sampling_params)
+        pruning_config = self.model_config.vision_token_pruning
+        original_visual_token_count = None
+        if pruning_config.enabled:
+            if image_data is None or len(image_data) != 1 or video_data is not None:
+                raise ValueError("vision token pruning requires exactly one image and no video")
+            image_token_id = self.model_config.hf_config.image_token_id
+            original_visual_token_count = prompt_ids.count(image_token_id)
+            if original_visual_token_count == 0:
+                raise ValueError("vision token pruning found no expanded image tokens in the rollout prompt")
         prompt_ids = _qwen2_5_vl_dedup_image_tokens(prompt_ids, self.model_config.processor)
         multi_modal_data = {}
         if image_data is not None:
@@ -540,8 +579,16 @@ class vLLMHttpServer:
             log_probs = [logprobs[token_ids[i]].logprob for i, logprobs in enumerate(final_res.outputs[0].logprobs)]
 
         routed_experts = None
-        if self.config.enable_rollout_routing_replay:
+        if self.config.enable_rollout_routing_replay or pruning_config.enabled:
             routed_experts = final_res.outputs[0].routed_experts
+
+        vision_token_selection = None
+        if pruning_config.enabled:
+            vision_token_selection = decode_rollout_selection(
+                routed_experts,
+                keep_ratio=pruning_config.keep_ratio,
+                original_visual_token_count=original_visual_token_count,
+            ).to_wire()
 
         # Determine stop reason from finish_reason
         finish_reason = final_res.outputs[0].finish_reason
@@ -553,7 +600,11 @@ class vLLMHttpServer:
             stop_reason = finish_reason  # for more stop reason in the future
 
         return TokenOutput(
-            token_ids=token_ids, log_probs=log_probs, routed_experts=routed_experts, stop_reason=stop_reason
+            token_ids=token_ids,
+            log_probs=log_probs,
+            routed_experts=routed_experts if self.config.enable_rollout_routing_replay else None,
+            vision_token_selection=vision_token_selection,
+            stop_reason=stop_reason,
         )
 
     async def wake_up(self):
