@@ -129,14 +129,16 @@ class TaskRunner:
         use_legacy_worker_impl = config.trainer.get("use_legacy_worker_impl", "auto")
         self_distillation_cfg = config.actor_rollout_ref.actor.get("self_distillation", None)
         loss_mode = config.actor_rollout_ref.actor.policy_loss.get("loss_mode", "vanilla")
-        self_distillation_needs_ref = self_distillation_cfg is not None and loss_mode == "vopd"
-        teacher_model_source = self_distillation_cfg.get("teacher_model_source", "legacy") if self_distillation_cfg else None
-        if self_distillation_needs_ref and need_reference_policy(config) and teacher_model_source == "legacy":
+        uses_opd_teacher = self_distillation_cfg is not None and loss_mode == "vopd"
+        teacher_model_source = (
+            self_distillation_cfg.get("teacher_model_source", "legacy") if self_distillation_cfg else None
+        )
+        if uses_opd_teacher and need_reference_policy(config) and teacher_model_source == "legacy":
             raise ValueError(
                 "Self-distillation with KL regularization requires "
                 "actor.self_distillation.teacher_model_source=current or fixed."
             )
-        if self_distillation_needs_ref and use_legacy_worker_impl == "disable":
+        if uses_opd_teacher and use_legacy_worker_impl == "disable":
             raise ValueError(
                 "Self-distillation requires the legacy worker implementation to colocate the teacher."
             )
@@ -179,14 +181,10 @@ class TaskRunner:
         else:
             raise NotImplementedError
 
-        # A ``current`` teacher reuses the actor weights and only changes the
-        # multimodal inputs/pruning mode for its no-grad forward pass.  Marking
-        # that worker as ActorRolloutRef makes the legacy worker eagerly build a
-        # second full reference model even though it is never used as the OPD
-        # teacher.  Keep ActorRolloutRef for sources that genuinely need a
-        # separate teacher module (legacy/fixed).
-        self_distillation_needs_separate_teacher = self_distillation_needs_ref and teacher_model_source != "current"
-        actor_role = Role.ActorRolloutRef if self_distillation_needs_separate_teacher else Role.ActorRollout
+        # The current-policy teacher shares actor weights and differs only in
+        # inputs/pruning mode. Legacy and fixed teachers own separate modules.
+        needs_separate_opd_teacher = uses_opd_teacher and teacher_model_source != "current"
+        actor_role = Role.ActorRolloutRef if needs_separate_opd_teacher else Role.ActorRollout
         self.role_worker_mapping[actor_role] = ray.remote(actor_rollout_cls)
         self.mapping[actor_role] = "global_pool"
         return actor_rollout_cls, ray_worker_group_cls

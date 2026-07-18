@@ -15,8 +15,8 @@ def test_layer0_physical_pruning_is_wired_before_actor_unpadding():
     forward_capture = plugin.index("capturer.capture(0, capture_values)")
     assert pending_capture < forward_capture
     assert "if capturer is not None:" in plugin
-    assert actor.index("apply_rollout_pruning_to_attention_mask(") < actor.index("unpad_input(")
+    assert actor.index("prepare_actor_pruning_inputs(") < actor.index("unpad_input(")
     assert "apply_vision_token_pruning=False" in actor
     assert "prune_visual_embeddings" in qwen25
-    assert "prune_visual_embeddings" in qwen3
+    assert "prune_visual_embedding_outputs" in qwen3
     assert "mask_visual_embeddings" not in qwen25 + qwen3

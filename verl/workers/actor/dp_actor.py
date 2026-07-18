@@ -20,7 +20,6 @@ Single Process Actor
 import logging
 import os
 import time
-from collections.abc import Mapping
 from types import SimpleNamespace
 from typing import Optional
 
@@ -31,15 +30,18 @@ from torch.distributed.tensor import DTensor
 
 import verl.utils.torch_functional as verl_F
 from verl import DataProto
-from verl.models.vision_token_pruning.config import VisionTokenPruningConfig
+from verl.models.vision_token_pruning.config import coerce_vision_token_pruning_config
+from verl.models.vision_token_pruning.runtime import prepare_actor_pruning_inputs
 from verl.trainer.ppo.core_algos import agg_loss, compute_self_distillation_loss, get_policy_loss_fn, kl_penalty
 from verl.utils.attention_utils import index_first_axis, pad_input, rearrange, unpad_input
 from verl.utils.device import get_device_id, get_device_name
 from verl.utils.fsdp_utils import FSDPModule, fsdp2_clip_grad_norm_
 from verl.utils.metric import AggregationType, Metric, reduce_metrics
+from verl.utils.model import extract_multi_modal_inputs
 from verl.utils.profiler import GPUMemoryLogger
 from verl.utils.py_functional import append_to_dict
 from verl.utils.seqlen_balancing import prepare_dynamic_batch, restore_dynamic_batch
+from verl.utils.tensordict_utils import unwrap_non_tensor_data
 from verl.utils.torch_dtypes import PrecisionType
 from verl.utils.torch_functional import logprobs_from_logits
 from verl.utils.ulysses import gather_outputs_and_unpad, slice_input_tensor, ulysses_pad, ulysses_pad_and_slice_inputs
@@ -83,12 +85,11 @@ class DataParallelPPOActor(BasePPOActor):
         self.actor_module = actor_module
         self.actor_optimizer = actor_optimizer
         self.teacher_module: Optional[nn.Module] = None
-        pruning_config = getattr(config, "vision_token_pruning", None)
-        if isinstance(pruning_config, Mapping):
-            pruning_config = VisionTokenPruningConfig(**dict(pruning_config))
-        self.vision_token_pruning_config = pruning_config
+        self.vision_token_pruning_config = coerce_vision_token_pruning_config(
+            getattr(config, "vision_token_pruning", None)
+        )
         self.vision_token_pruning_enabled = bool(
-            actor_optimizer is not None and pruning_config is not None and pruning_config.enabled
+            actor_optimizer is not None and self.vision_token_pruning_config.enabled
         )
         role = "Ref" if actor_optimizer is None else "Actor"
 
@@ -367,50 +368,30 @@ class DataParallelPPOActor(BasePPOActor):
                 )
 
         response_length = micro_batch["responses"].size(-1)
-        multi_modal_inputs = {}
-        per_sample_multi_modal_inputs = []
-        if "multi_modal_inputs" in micro_batch.keys():
-            from verl.models.vision_token_pruning.runtime import (
-                strip_pruning_metadata,
-                strip_selection_metadata,
-            )
-            from verl.utils.model import extract_multi_modal_inputs
-            from verl.utils.tensordict_utils import unwrap_non_tensor_data
-
-            per_sample_multi_modal_inputs = [
-                unwrap_non_tensor_data(inputs) if inputs is not None else None
-                for inputs in micro_batch["multi_modal_inputs"]
-            ]
-            model_multi_modal_inputs = [
-                (
-                    strip_selection_metadata(inputs)
-                    if apply_vision_token_pruning
-                    else strip_pruning_metadata(inputs)
-                )
-                if inputs is not None
-                else None
-                for inputs in per_sample_multi_modal_inputs
-            ]
-            multi_modal_inputs = extract_multi_modal_inputs(model_multi_modal_inputs)
+        input_ids = micro_batch["input_ids"]
+        attention_mask = micro_batch["attention_mask"]
+        per_sample_multi_modal_inputs = [
+            unwrap_non_tensor_data(inputs) if inputs is not None else None
+            for inputs in micro_batch.get("multi_modal_inputs", [])
+        ]
+        model_config = getattr(model, "module", model).config
+        prepared_pruning_inputs = prepare_actor_pruning_inputs(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            per_sample_multi_modal_inputs=per_sample_multi_modal_inputs,
+            image_token_id=getattr(model_config, "image_token_id", None),
+            config=self.vision_token_pruning_config,
+            apply_pruning=apply_vision_token_pruning,
+        )
+        attention_mask = prepared_pruning_inputs.attention_mask
+        multi_modal_inputs = (
+            extract_multi_modal_inputs(prepared_pruning_inputs.per_sample_multi_modal_inputs)
+            if prepared_pruning_inputs.per_sample_multi_modal_inputs
+            else {}
+        )
 
         with torch.autocast(device_type=self.device_name, dtype=self.param_dtype):
-            input_ids = micro_batch["input_ids"]
             batch_size, seqlen = input_ids.shape
-            attention_mask = micro_batch["attention_mask"]
-            if apply_vision_token_pruning:
-                from verl.models.vision_token_pruning.runtime import apply_rollout_pruning_to_attention_mask
-
-                model_config = getattr(model, "module", model).config
-                image_token_id = getattr(model_config, "image_token_id", None)
-                if image_token_id is None:
-                    raise ValueError("vision token pruning requires model.config.image_token_id")
-                attention_mask = apply_rollout_pruning_to_attention_mask(
-                    input_ids,
-                    attention_mask,
-                    per_sample_multi_modal_inputs,
-                    image_token_id=image_token_id,
-                    expected_keep_ratio=self.vision_token_pruning_config.keep_ratio,
-                )
             position_ids = micro_batch["position_ids"]
             response_start_idx = micro_batch.get("response_start_idx")
             if response_start_idx is not None:

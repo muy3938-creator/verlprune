@@ -31,6 +31,7 @@ def test_real_vllm_mrope_helper_physically_gathers_selected_embeddings(qwen3):
         _keep_ratio=0.5,
         _selection_seed=1234,
         _selection_counter=0,
+        _append_zero_position_axis=qwen3,
     )
     embeddings = torch.arange(32, dtype=torch.float32).reshape(4, 8)
     image_grid_thw = torch.tensor([[1, 4, 4]])
@@ -39,7 +40,6 @@ def test_real_vllm_mrope_helper_physically_gathers_selected_embeddings(qwen3):
         dummy,
         (embeddings,),
         image_grid_thw,
-        qwen3=qwen3,
     )
     encoded = annotated[:, -2:].long()
     kept_indices = encoded[:, 0] + encoded[:, 1] * 256 - 1

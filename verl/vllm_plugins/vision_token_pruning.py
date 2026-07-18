@@ -31,14 +31,28 @@ from verl.models.vision_token_pruning.selectors import select_random_visual_toke
 _METADATA_RADIX = 256
 
 
-def _pruning_config(hf_config: Any) -> dict[str, Any]:
+def _get_keep_ratio(hf_config: Any) -> float:
     config = getattr(hf_config, "vision_token_pruning", None)
     if not isinstance(config, dict):
         raise ValueError("pruned vLLM model requires hf_config.vision_token_pruning")
     keep_ratio = float(config.get("keep_ratio", 0.0))
     if not 0.0 < keep_ratio < 1.0:
         raise ValueError("pruned vLLM model requires keep_ratio in (0, 1)")
-    return config
+    return keep_ratio
+
+
+def _encode_selection_metadata(indices: torch.Tensor, *, dtype: torch.dtype) -> torch.Tensor:
+    """Encode positive one-based indices into two exact low-range columns."""
+
+    encoded = indices + 1
+    return torch.stack(
+        [encoded.remainder(_METADATA_RADIX), encoded.div(_METADATA_RADIX, rounding_mode="floor")],
+        dim=1,
+    ).to(dtype=dtype)
+
+
+def _decode_selection_metadata(annotated_embeddings: torch.Tensor) -> torch.Tensor:
+    return annotated_embeddings[:, -2].long() + annotated_embeddings[:, -1].long() * _METADATA_RADIX
 
 
 class _PrunedImagePromptMixin:
@@ -49,7 +63,7 @@ class _PrunedImagePromptMixin:
         out_mm_kwargs: MultiModalKwargsItems,
     ) -> Sequence[PromptUpdate]:
         updates = list(super()._get_prompt_updates(mm_items, hf_processor_mm_kwargs, out_mm_kwargs))
-        keep_ratio = float(_pruning_config(self.info.get_hf_config())["keep_ratio"])
+        keep_ratio = _get_keep_ratio(self.info.get_hf_config())
         for update in updates:
             if update.modality != "image":
                 continue
@@ -79,10 +93,11 @@ class VerlRandomPrunedQwen3VLMultiModalProcessor(
 
 class _RandomPruningMixin:
     supports_multimodal_pruning = True
+    _append_zero_position_axis = False
 
     def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
         super().__init__(vllm_config=vllm_config, prefix=prefix)
-        self._keep_ratio = float(_pruning_config(self.config)["keep_ratio"])
+        self._keep_ratio = _get_keep_ratio(self.config)
         expected_pruning_rate = 1.0 - self._keep_ratio
         if self.video_pruning_rate is None or abs(float(self.video_pruning_rate) - expected_pruning_rate) > 1e-8:
             raise ValueError(
@@ -102,7 +117,7 @@ class _RandomPruningMixin:
         num_computed_tokens: int,
     ):
         self._pending_selection_indices.extend(
-            mm[:, -2].long() + mm[:, -1].long() * _METADATA_RADIX
+            _decode_selection_metadata(mm)
             for mm in multimodal_embeddings
             if len(mm)
         )
@@ -169,8 +184,6 @@ class _RandomPruningMixin:
         self,
         image_embeds_split: tuple[torch.Tensor, ...],
         image_grid_thw: torch.Tensor,
-        *,
-        qwen3: bool,
     ) -> tuple[torch.Tensor, ...]:
         merge_size = self.visual.spatial_merge_size
         output = []
@@ -189,14 +202,10 @@ class _RandomPruningMixin:
                 generator=generator,
             )
             positions = compute_mrope_for_media(grid_thw, merge_size).to(embeddings.device)
-            if qwen3:
+            if self._append_zero_position_axis:
                 positions = torch.cat([positions, torch.zeros_like(positions[:, :1])], dim=1)
 
-            encoded = kept_indices + 1
-            metadata = torch.stack(
-                [encoded.remainder(_METADATA_RADIX), encoded.div(_METADATA_RADIX, rounding_mode="floor")],
-                dim=1,
-            ).to(dtype=embeddings.dtype)
+            metadata = _encode_selection_metadata(kept_indices, dtype=embeddings.dtype)
             output.append(torch.cat([embeddings[kept_indices], positions[kept_indices], metadata], dim=1))
         return tuple(output)
 
@@ -214,7 +223,6 @@ class VerlRandomPrunedQwen2_5VLForConditionalGeneration(
         return self._prune_and_annotate_images(
             image_embeds_split,
             image_input["image_grid_thw"],
-            qwen3=False,
         )
 
 
@@ -227,9 +235,10 @@ class VerlRandomPrunedQwen3VLForConditionalGeneration(
     _RandomPruningMixin,
     Qwen3VLForConditionalGeneration,
 ):
+    _append_zero_position_axis = True
+
     def _postprocess_image_embeds_evs(self, image_embeds_split, image_input):
         return self._prune_and_annotate_images(
             image_embeds_split,
             image_input["image_grid_thw"],
-            qwen3=True,
         )

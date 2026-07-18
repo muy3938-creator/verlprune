@@ -5,9 +5,9 @@ torch = pytest.importorskip("torch")
 from verl.models.vision_token_pruning.protocol import decode_rollout_selection  # noqa: E402
 from verl.models.vision_token_pruning.runtime import (  # noqa: E402
     KEEP_MASK_KEY,
-    apply_rollout_pruning_to_attention_mask,
     attach_selection_to_multi_modal_inputs,
     prune_visual_embeddings,
+    replay_rollout_selection_on_attention_mask,
 )
 from verl.models.vision_token_pruning.selectors import select_random_visual_tokens  # noqa: E402
 
@@ -28,7 +28,7 @@ def test_rollout_to_actor_physical_pruning_supports_a_backward_step():
     multimodal_inputs = attach_selection_to_multi_modal_inputs({}, selection.to_wire())
 
     input_ids = torch.tensor([[10, 99, 99, 99, 99, 99, 99, 11, 12]])
-    attention_mask = apply_rollout_pruning_to_attention_mask(
+    attention_mask = replay_rollout_selection_on_attention_mask(
         input_ids,
         torch.ones_like(input_ids),
         [multimodal_inputs],

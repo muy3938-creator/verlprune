@@ -34,6 +34,7 @@ from transformers import AutoProcessor, AutoTokenizer
 from verl.experimental.agent_loop.prometheus_utils import update_prometheus_config
 from verl.experimental.agent_loop.utils import resolve_config_path
 from verl.experimental.reward_loop import RewardLoopWorker
+from verl.models.vision_token_pruning.runtime import attach_selection_to_multi_modal_inputs
 from verl.protocol import DataProto
 from verl.single_controller.ray.base import RayResourcePool, RayWorkerGroup
 from verl.utils import hf_processor, hf_tokenizer
@@ -142,6 +143,8 @@ class AgentLoopOutput(BaseModel):
     """Log probabilities for the response tokens."""
     routed_experts: Optional[Any] = None
     """Routed experts for the total tokens."""
+    vision_token_selection: Optional[dict[str, Any]] = None
+    """Exact rollout-selected visual-token subset, when pruning is enabled."""
     multi_modal_data: Optional[dict[str, Any]] = None
     """Multi-modal data for multi-modal tools."""
     reward_score: Optional[float] = None
@@ -687,14 +690,11 @@ class AgentLoopWorker:
             routed_experts[:, start_pos:end_pos] = experts_tensor.unsqueeze(0)
 
         multi_modal_inputs = self._compute_multi_modal_inputs(output, input_ids)
-        from verl.models.vision_token_pruning.runtime import (
-            SELECTION_WIRE_KEY,
-            attach_selection_to_multi_modal_inputs,
-        )
-
-        selection_wire = output.extra_fields.get(SELECTION_WIRE_KEY)
-        if selection_wire is not None:
-            multi_modal_inputs = attach_selection_to_multi_modal_inputs(multi_modal_inputs, selection_wire)
+        if output.vision_token_selection is not None:
+            multi_modal_inputs = attach_selection_to_multi_modal_inputs(
+                multi_modal_inputs,
+                output.vision_token_selection,
+            )
         position_ids = self._compute_position_ids(input_ids, attention_mask, multi_modal_inputs)
         await self._compute_score(
             output,
@@ -715,6 +715,7 @@ class AgentLoopWorker:
             attention_mask=attention_mask,
             response_logprobs=response_logprobs,
             routed_experts=routed_experts,
+            vision_token_selection=output.vision_token_selection,
             multi_modal_inputs=multi_modal_inputs,
             multi_modal_data=output.multi_modal_data,
             reward_score=output.reward_score,

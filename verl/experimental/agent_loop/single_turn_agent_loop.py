@@ -17,7 +17,6 @@ from typing import Any
 from uuid import uuid4
 
 from verl.experimental.agent_loop.agent_loop import AgentLoopBase, AgentLoopOutput, register
-from verl.models.vision_token_pruning.runtime import SELECTION_WIRE_KEY
 from verl.tools.utils.tool_registry import initialize_tools_from_config
 from verl.utils.profiler import simple_timer
 
@@ -76,13 +75,9 @@ class SingleTurnAgentLoop(AgentLoopBase):
                 if output.routed_experts is not None
                 else None
             ),
+            vision_token_selection=output.vision_token_selection,
             multi_modal_data=multi_modal_data,
             num_turns=2,
             metrics=metrics,
-            extra_fields=(
-                {SELECTION_WIRE_KEY: output.vision_token_selection}
-                if output.vision_token_selection is not None
-                else {}
-            ),
         )
         return output

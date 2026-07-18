@@ -28,6 +28,7 @@ from transformers.models.qwen2_vl.modeling_qwen2_vl import (
 )
 from transformers.utils import is_flash_attn_2_available, is_flash_attn_greater_or_equal_2_10
 
+from verl.models.vision_token_pruning.runtime import prune_visual_embeddings
 from verl.utils.device import is_npu_available
 from verl.utils.transformers_compat import is_transformers_version_in_range
 from verl.utils.ulysses import (
@@ -346,8 +347,6 @@ def _get_input_embeds(
     if pixel_values is not None:
         pixel_values = pixel_values.type(model.visual.dtype)
         image_embeds = model.visual(pixel_values, grid_thw=image_grid_thw)
-
-        from verl.models.vision_token_pruning.runtime import prune_visual_embeddings
 
         image_embeds = prune_visual_embeddings(image_embeds, vision_token_keep_mask)
         n_image_tokens = (input_ids == model.config.image_token_id).sum().item()

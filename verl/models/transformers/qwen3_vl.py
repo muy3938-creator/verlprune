@@ -24,6 +24,7 @@ from transformers.models.qwen3_vl.modeling_qwen3_vl import (
     Qwen3VLForConditionalGeneration,
 )
 
+from verl.models.vision_token_pruning.runtime import prune_visual_embedding_outputs
 from verl.utils.transformers_compat import unpack_visual_output
 
 logger = logging.getLogger(__file__)
@@ -152,18 +153,11 @@ def _get_input_embeds(
         pixel_values = pixel_values.type(model.visual.dtype)
         image_embeds, deepstack_image_embeds = unpack_visual_output(model.visual(pixel_values, grid_thw=image_grid_thw))
 
-        from verl.models.vision_token_pruning.runtime import prune_visual_embeddings
-
-        image_embeds = prune_visual_embeddings(image_embeds, vision_token_keep_mask)
-        if deepstack_image_embeds is not None:
-            deepstack_image_embeds = [
-                prune_visual_embeddings(
-                    embeddings,
-                    vision_token_keep_mask,
-                    name="deepstack vision_token_keep_mask",
-                )
-                for embeddings in deepstack_image_embeds
-            ]
+        image_embeds, deepstack_image_embeds = prune_visual_embedding_outputs(
+            image_embeds,
+            deepstack_image_embeds,
+            vision_token_keep_mask,
+        )
         n_image_tokens = (input_ids == model.config.image_token_id).sum().item()
         n_image_features = image_embeds.shape[0]
         if n_image_tokens != n_image_features:

@@ -154,8 +154,8 @@ def run_train_step(output_dir: Path, learning_rate: float) -> None:
     from verl.models.vision_token_pruning.protocol import VisionTokenSelection
     from verl.models.vision_token_pruning.runtime import (
         KEEP_MASK_KEY,
-        apply_rollout_pruning_to_attention_mask,
         attach_selection_to_multi_modal_inputs,
+        replay_rollout_selection_on_attention_mask,
     )
 
     record = json.loads((output_dir / "rollout.json").read_text(encoding="utf-8"))
@@ -173,7 +173,7 @@ def run_train_step(output_dir: Path, learning_rate: float) -> None:
     selection = VisionTokenSelection.from_wire(record["selection"])
     multimodal_inputs = attach_selection_to_multi_modal_inputs({}, selection.to_wire())
     image_token_id = processor.tokenizer.convert_tokens_to_ids("<|image_pad|>")
-    student_attention_mask = apply_rollout_pruning_to_attention_mask(
+    student_attention_mask = replay_rollout_selection_on_attention_mask(
         full_input_ids,
         full_attention_mask,
         [multimodal_inputs],

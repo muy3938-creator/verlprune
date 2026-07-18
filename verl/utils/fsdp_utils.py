@@ -714,16 +714,10 @@ def replace_lora_wrapper(k, peft_config):
     Returns:
         str: Transformed parameter key for base layer.
     """
-    if k.endswith(".weight"):
-        module_k = k[: -len(".weight")]
-        if check_exclude_modules(peft_config, module_k):
-            return k
-        elif check_target_modules(peft_config, module_k):
-            return f"{module_k}.base_layer.weight"
-    if k.endswith(".bias"):
-        module_k = k[: -len(".bias")]
-        if check_exclude_modules(peft_config, module_k):
-            return k
-        elif check_target_modules(peft_config, module_k):
-            return f"{module_k}.base_layer.bias"
-    return k
+    parameter_suffix = next((suffix for suffix in (".weight", ".bias") if k.endswith(suffix)), None)
+    if parameter_suffix is None:
+        return k
+    module_k = k[: -len(parameter_suffix)]
+    if check_exclude_modules(peft_config, module_k) or not check_target_modules(peft_config, module_k):
+        return k
+    return f"{module_k}.base_layer{parameter_suffix}"

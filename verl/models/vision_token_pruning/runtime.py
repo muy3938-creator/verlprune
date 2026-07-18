@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 import torch
 
+from .config import VisionTokenPruningConfig
 from .protocol import VisionTokenSelection
 
 KEEP_MASK_KEY = "vision_token_keep_mask"
@@ -46,6 +48,54 @@ def strip_selection_metadata(multi_modal_inputs: dict[str, Any]) -> dict[str, An
     return {key: value for key, value in multi_modal_inputs.items() if key != SELECTION_WIRE_KEY}
 
 
+@dataclass(frozen=True)
+class PreparedActorPruningInputs:
+    """Model-facing multimodal inputs and their matching sequence mask."""
+
+    attention_mask: torch.Tensor
+    per_sample_multi_modal_inputs: list[dict[str, Any] | None]
+
+
+def prepare_actor_pruning_inputs(
+    *,
+    input_ids: torch.Tensor,
+    attention_mask: torch.Tensor,
+    per_sample_multi_modal_inputs: list[dict[str, Any] | None],
+    image_token_id: int | None,
+    config: VisionTokenPruningConfig,
+    apply_pruning: bool,
+) -> PreparedActorPruningInputs:
+    """Prepare one actor/teacher forward without leaking protocol metadata to the model."""
+
+    if not apply_pruning:
+        return PreparedActorPruningInputs(
+            attention_mask=attention_mask,
+            per_sample_multi_modal_inputs=[
+                strip_pruning_metadata(inputs) if inputs is not None else None
+                for inputs in per_sample_multi_modal_inputs
+            ],
+        )
+    if not config.enabled:
+        raise ValueError("cannot apply visual-token pruning when it is disabled in the actor config")
+    if image_token_id is None:
+        raise ValueError("vision token pruning requires model.config.image_token_id")
+
+    replayed_attention_mask = replay_rollout_selection_on_attention_mask(
+        input_ids,
+        attention_mask,
+        per_sample_multi_modal_inputs,
+        image_token_id=image_token_id,
+        expected_keep_ratio=config.keep_ratio,
+    )
+    return PreparedActorPruningInputs(
+        attention_mask=replayed_attention_mask,
+        per_sample_multi_modal_inputs=[
+            strip_selection_metadata(inputs) if inputs is not None else None
+            for inputs in per_sample_multi_modal_inputs
+        ],
+    )
+
+
 def prune_visual_embeddings(
     embeddings: torch.Tensor,
     keep_mask: torch.Tensor | None,
@@ -65,7 +115,23 @@ def prune_visual_embeddings(
     return embeddings[keep_mask.to(embeddings.device)]
 
 
-def apply_rollout_pruning_to_attention_mask(
+def prune_visual_embedding_outputs(
+    embeddings: torch.Tensor,
+    auxiliary_embeddings: list[torch.Tensor] | None,
+    keep_mask: torch.Tensor | None,
+) -> tuple[torch.Tensor, list[torch.Tensor] | None]:
+    """Prune a primary visual output and any aligned deep-stack outputs."""
+
+    pruned_embeddings = prune_visual_embeddings(embeddings, keep_mask)
+    if auxiliary_embeddings is None:
+        return pruned_embeddings, None
+    return pruned_embeddings, [
+        prune_visual_embeddings(auxiliary, keep_mask, name=f"auxiliary visual keep mask #{index}")
+        for index, auxiliary in enumerate(auxiliary_embeddings)
+    ]
+
+
+def replay_rollout_selection_on_attention_mask(
     input_ids: torch.Tensor,
     attention_mask: torch.Tensor,
     per_sample_multi_modal_inputs: list[dict[str, Any] | None],
