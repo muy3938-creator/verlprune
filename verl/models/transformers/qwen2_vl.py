@@ -277,6 +277,13 @@ def qwen2_vl_attn_forward(
     from transformers.models.qwen2_vl.modeling_qwen2_vl import apply_multimodal_rotary_pos_emb, repeat_kv
 
     bsz, q_len, _ = hidden_states.size()  # q_len = seq_length / sp_size
+    layerwise_pruning_mask = kwargs.pop("vision_token_pruning_mask", None)
+    prune_after_layer = kwargs.pop("vision_token_prune_after_layer", None)
+    apply_layerwise_pruning = (
+        layerwise_pruning_mask is not None
+        and prune_after_layer is not None
+        and self.layer_idx > int(prune_after_layer)
+    )
     query_states = self.q_proj(hidden_states)  # (batch_size, seq_length / sp_size, num_heads * head_size)
     key_states = self.k_proj(hidden_states)
     value_states = self.v_proj(hidden_states)
@@ -313,6 +320,22 @@ def qwen2_vl_attn_forward(
     if position_ids.ndim == 3:
         position_ids = position_ids[0]
 
+    retained_indices = None
+    if apply_layerwise_pruning and attention_mask is None:
+        if bsz != 1 or layerwise_pruning_mask.numel() != q_len:
+            raise ValueError("packed layerwise pruning expects a single flattened sequence")
+        flat_keep_mask = layerwise_pruning_mask.reshape(-1).to(device=query_states.device, dtype=torch.bool)
+        retained_indices = flat_keep_mask.nonzero(as_tuple=False).flatten()
+        query_states = query_states.index_select(1, retained_indices)
+        key_states = key_states.index_select(1, retained_indices)
+        value_states = value_states.index_select(1, retained_indices)
+        position_ids = position_ids.index_select(-1, retained_indices)
+        q_len = retained_indices.numel()
+    elif apply_layerwise_pruning:
+        if layerwise_pruning_mask.shape != attention_mask.shape:
+            raise ValueError("layerwise pruning mask must match the padded attention mask")
+        attention_mask = attention_mask * layerwise_pruning_mask.to(attention_mask.device)
+
     attn_output = _custom_flash_attention_forward(
         query_states,
         key_states,
@@ -325,7 +348,11 @@ def qwen2_vl_attn_forward(
         use_top_left_mask=_flash_use_top_left_mask,
         position_ids=position_ids,  # important: pass position ids
     )  # (batch_size, seq_length / sp_size, num_head, head_size)
-    attn_output = attn_output.reshape(bsz, q_len, self.hidden_size).contiguous()
+    if retained_indices is not None:
+        compact_output = attn_output
+        attn_output = compact_output.new_zeros((bsz, hidden_states.shape[1], *compact_output.shape[2:]))
+        attn_output.index_copy_(1, retained_indices, compact_output)
+    attn_output = attn_output.reshape(bsz, hidden_states.shape[1], self.hidden_size).contiguous()
     attn_output = self.o_proj(attn_output)
     if is_transformers_version_in_range(min_version="4.54.0"):
         return attn_output, None

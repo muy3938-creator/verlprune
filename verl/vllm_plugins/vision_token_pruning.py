@@ -26,7 +26,7 @@ from vllm.multimodal.parse import MultiModalDataItems
 from vllm.multimodal.processing import PromptUpdate
 
 from verl.models.vision_token_pruning.protocol import compute_keep_count
-from verl.models.vision_token_pruning.selectors import select_random_visual_tokens
+from verl.models.vision_token_pruning.selectors import select_visual_tokens
 
 _METADATA_RADIX = 256
 
@@ -39,6 +39,16 @@ def _get_keep_ratio(hf_config: Any) -> float:
     if not 0.0 < keep_ratio < 1.0:
         raise ValueError("pruned vLLM model requires keep_ratio in (0, 1)")
     return keep_ratio
+
+
+def _get_selector_name(hf_config: Any) -> str:
+    config = getattr(hf_config, "vision_token_pruning", None)
+    if not isinstance(config, dict):
+        raise ValueError("pruned vLLM model requires hf_config.vision_token_pruning")
+    selector = str(config.get("selector", "random")).strip()
+    if not selector:
+        raise ValueError("pruned vLLM model requires a non-empty selector name")
+    return selector
 
 
 def _encode_selection_metadata(indices: torch.Tensor, *, dtype: torch.dtype) -> torch.Tensor:
@@ -77,27 +87,28 @@ class _PrunedImagePromptMixin:
         return updates
 
 
-class VerlRandomPrunedQwen2_5VLMultiModalProcessor(
+class VerlPrunedQwen2_5VLMultiModalProcessor(
     _PrunedImagePromptMixin,
     Qwen2_5_VLMultiModalProcessor,
 ):
     pass
 
 
-class VerlRandomPrunedQwen3VLMultiModalProcessor(
+class VerlPrunedQwen3VLMultiModalProcessor(
     _PrunedImagePromptMixin,
     Qwen3VLMultiModalProcessor,
 ):
     pass
 
 
-class _RandomPruningMixin:
+class _PruningMixin:
     supports_multimodal_pruning = True
     _append_zero_position_axis = False
 
     def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
         super().__init__(vllm_config=vllm_config, prefix=prefix)
         self._keep_ratio = _get_keep_ratio(self.config)
+        self._selector = _get_selector_name(self.config)
         expected_pruning_rate = 1.0 - self._keep_ratio
         if self.video_pruning_rate is None or abs(float(self.video_pruning_rate) - expected_pruning_rate) > 1e-8:
             raise ValueError(
@@ -195,11 +206,14 @@ class _RandomPruningMixin:
             generator = torch.Generator(device=embeddings.device)
             generator.manual_seed(self._selection_seed + self._selection_counter)
             self._selection_counter += 1
-            kept_indices = select_random_visual_tokens(
+            kept_indices = select_visual_tokens(
+                self._selector,
                 len(embeddings),
                 keep_count,
                 device=embeddings.device,
                 generator=generator,
+                features=embeddings,
+                grid_thw=grid_thw,
             )
             positions = compute_mrope_for_media(grid_thw, merge_size).to(embeddings.device)
             if self._append_zero_position_axis:
@@ -211,12 +225,12 @@ class _RandomPruningMixin:
 
 
 @MULTIMODAL_REGISTRY.register_processor(
-    VerlRandomPrunedQwen2_5VLMultiModalProcessor,
+    VerlPrunedQwen2_5VLMultiModalProcessor,
     info=Qwen2_5_VLProcessingInfo,
     dummy_inputs=Qwen2_5_VLDummyInputsBuilder,
 )
-class VerlRandomPrunedQwen2_5VLForConditionalGeneration(
-    _RandomPruningMixin,
+class VerlPrunedQwen2_5VLForConditionalGeneration(
+    _PruningMixin,
     Qwen2_5_VLForConditionalGeneration,
 ):
     def _postprocess_image_embeds_evs(self, image_embeds_split, image_input):
@@ -227,12 +241,12 @@ class VerlRandomPrunedQwen2_5VLForConditionalGeneration(
 
 
 @MULTIMODAL_REGISTRY.register_processor(
-    VerlRandomPrunedQwen3VLMultiModalProcessor,
+    VerlPrunedQwen3VLMultiModalProcessor,
     info=Qwen3VLProcessingInfo,
     dummy_inputs=Qwen3VLDummyInputsBuilder,
 )
-class VerlRandomPrunedQwen3VLForConditionalGeneration(
-    _RandomPruningMixin,
+class VerlPrunedQwen3VLForConditionalGeneration(
+    _PruningMixin,
     Qwen3VLForConditionalGeneration,
 ):
     _append_zero_position_axis = True
@@ -242,3 +256,11 @@ class VerlRandomPrunedQwen3VLForConditionalGeneration(
             image_embeds_split,
             image_input["image_grid_thw"],
         )
+
+
+# Compatibility aliases for checkpoints and launch commands from the random-only prototype.
+_RandomPruningMixin = _PruningMixin
+VerlRandomPrunedQwen2_5VLMultiModalProcessor = VerlPrunedQwen2_5VLMultiModalProcessor
+VerlRandomPrunedQwen3VLMultiModalProcessor = VerlPrunedQwen3VLMultiModalProcessor
+VerlRandomPrunedQwen2_5VLForConditionalGeneration = VerlPrunedQwen2_5VLForConditionalGeneration
+VerlRandomPrunedQwen3VLForConditionalGeneration = VerlPrunedQwen3VLForConditionalGeneration

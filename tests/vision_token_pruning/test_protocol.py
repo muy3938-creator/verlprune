@@ -15,6 +15,7 @@ def test_selection_round_trip():
     )
 
     assert VisionTokenSelection.from_wire(selection.to_wire()) == selection
+    assert selection.to_wire()["selector"] == "random"
 
 
 def test_keep_count_rounds_and_never_drops_every_token():
@@ -48,6 +49,17 @@ def test_decode_vllm_metadata():
     )
 
     assert selection.kept_visual_indices == (0, 2, 3)
+
+
+def test_decode_records_the_rollout_selector():
+    selection = decode_rollout_selection(
+        [[[1]], [[4]]],
+        keep_ratio=0.5,
+        original_visual_token_count=4,
+        selector="uniform",
+    )
+
+    assert selection.selector == "uniform"
 
 
 def test_decode_vllm_metadata_requires_exact_count():

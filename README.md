@@ -100,9 +100,9 @@ bash scripts/run_vision_opd.sh
 
 Key hyperparameters can be edited at the top of the script. See the script for the full configuration.
 
-#### Layer-0 random visual-token pruning
+#### Selector-driven visual-token pruning
 
-The baseline physically retains a random subset of Qwen2.5-VL or Qwen3-VL image tokens before decoder layer 0. The
+The baseline physically retains a selected subset of Qwen2.5-VL or Qwen3-VL image tokens before decoder layer 0. The
 final visual token is always retained as the MRoPE anchor. vLLM returns the exact retained indices with each rollout;
 the actor reuses those indices to remove the same image tokens before its FlashAttention varlen forward. The OPD
 teacher remains unpruned.
@@ -112,25 +112,42 @@ Set `MODEL_PATH` to a Qwen2.5-VL or Qwen3-VL checkpoint and edit these values in
 ```bash
 VISION_TOKEN_PRUNING_ENABLED=True
 VISION_TOKEN_KEEP_RATIO=0.5
+VISION_TOKEN_SELECTOR=random  # or uniform / module:function
 ```
 
 This intentionally small baseline supports exactly one image per rollout, no video, and `layer=0` only. Actor
 training requires `use_remove_padding=True` and fails immediately when the rollout selection is missing or does not
 match the configured keep ratio. Run `pip install -e .` once so vLLM can discover the bundled model plugin.
 
+An experimental Qwen2.5-VL backend can delay pruning until after decoder layer `N` while preserving the same rollout
+selection. Enable it with the Hydra override below (or set `PRUNE_AFTER_LAYER` when using the 10-step smoke script):
+
+```bash
+bash scripts/run_vision_opd.sh \
+    actor_rollout_ref.model.vision_token_pruning.prune_after_layer=15
+```
+
+The layerwise backend currently requires sequence-parallel size 1, eager vLLM execution, disabled chunked prefill and
+prefix caching, one image per request, and no video. See
+`docs/layerwise-vision-token-pruning-validation.md` for its numerical and end-to-end validation results.
+
 For accelerated inference after training, serve a Qwen2.5-VL checkpoint with the same physical-pruning model but
 without the training-only selection return channel:
 
 ```bash
 vllm serve /path/to/merged-checkpoint \
-    --hf-overrides '{"architectures":["VerlRandomPrunedQwen2_5VLForConditionalGeneration"],"vision_token_pruning":{"keep_ratio":0.5}}' \
+    --hf-overrides '{"architectures":["VerlPrunedQwen2_5VLForConditionalGeneration"],"vision_token_pruning":{"keep_ratio":0.5,"selector":"random"}}' \
     --video-pruning-rate 0.5 \
     --limit-mm-per-prompt '{"image":1,"video":0}'
 ```
 
-For Qwen3-VL, replace the architecture with `VerlRandomPrunedQwen3VLForConditionalGeneration`. The
+For Qwen3-VL, replace the architecture with `VerlPrunedQwen3VLForConditionalGeneration`. The
 `video-pruning-rate` value activates vLLM's multimodal pruning path; for this image-only baseline it must equal
 `1 - keep_ratio`.
+
+The actor only replays rollout indices, so new algorithms do not change the training path. A selector can be a
+built-in name (`random`, `uniform`) or an installed `module:function` callable. See
+`docs/final-vision-pruning-architecture.md` for the selector contract, backend benchmark, and recommended architecture.
 
 ### 3. Merge Checkpoints
 

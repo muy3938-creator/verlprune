@@ -7,6 +7,8 @@ MODEL_PATH="${MODEL_PATH:-/tmp/Qwen2.5-VL-3B-Instruct}"
 TRAIN_FILE="${TRAIN_FILE:-/tmp/opd_data/train.parquet}"
 OUTPUT_DIR="${OUTPUT_DIR:-/tmp/opd_10step}"
 KEEP_RATIO="${KEEP_RATIO:-0.5}"
+SELECTOR="${SELECTOR:-random}"
+PRUNE_AFTER_LAYER="${PRUNE_AFTER_LAYER:--1}"
 TOTAL_TRAINING_STEPS="${TOTAL_TRAINING_STEPS:-10}"
 SAVE_FREQ="${SAVE_FREQ:-1}"
 RESUME_MODE="${RESUME_MODE:-auto}"
@@ -45,6 +47,8 @@ MODEL_ARGS=(
     "actor_rollout_ref.model.target_modules=\".*language_model.layers.*(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)\""
     "actor_rollout_ref.model.vision_token_pruning.enabled=True"
     "actor_rollout_ref.model.vision_token_pruning.keep_ratio=${KEEP_RATIO}"
+    "actor_rollout_ref.model.vision_token_pruning.selector=${SELECTOR}"
+    "actor_rollout_ref.model.vision_token_pruning.prune_after_layer=${PRUNE_AFTER_LAYER}"
 )
 
 ACTOR_ARGS=(

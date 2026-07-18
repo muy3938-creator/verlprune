@@ -19,6 +19,7 @@ TEACHER_REGULARIZATION="ema"
 TEACHER_UPDATE_RATE=0.05
 VISION_TOKEN_PRUNING_ENABLED=False
 VISION_TOKEN_KEEP_RATIO=0.5
+VISION_TOKEN_SELECTOR=random
 
 TRAIN_BATCH_SIZE=96
 PPO_MIMI_BATCH_SIZE=96
@@ -105,6 +106,7 @@ python3 -m verl.trainer.main_ppo --config-name "$CONFIG_NAME" \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.model.vision_token_pruning.enabled=$VISION_TOKEN_PRUNING_ENABLED \
     actor_rollout_ref.model.vision_token_pruning.keep_ratio=$VISION_TOKEN_KEEP_RATIO \
+    actor_rollout_ref.model.vision_token_pruning.selector=$VISION_TOKEN_SELECTOR \
     actor_rollout_ref.rollout.n=$ROLLOUT_N \
     actor_rollout_ref.actor.optim.lr=$LR \
     actor_rollout_ref.actor.ppo_mini_batch_size=$PPO_MIMI_BATCH_SIZE \

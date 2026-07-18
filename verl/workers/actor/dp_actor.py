@@ -95,7 +95,7 @@ class DataParallelPPOActor(BasePPOActor):
 
         self.use_remove_padding = self.config.get("use_remove_padding", False)
         if self.vision_token_pruning_enabled and not self.use_remove_padding:
-            raise ValueError("physical visual-token pruning requires actor.use_remove_padding=True")
+            raise ValueError("visual-token pruning requires actor.use_remove_padding=True")
         if torch.distributed.get_rank() == 0:
             print(f"{role} use_remove_padding={self.use_remove_padding}")
         self.use_fused_kernels = self.config.get("use_fused_kernels", False)
@@ -104,6 +104,8 @@ class DataParallelPPOActor(BasePPOActor):
 
         self.ulysses_sequence_parallel_size = self.config.ulysses_sequence_parallel_size
         self.use_ulysses_sp = self.ulysses_sequence_parallel_size > 1
+        if self.vision_token_pruning_config.uses_layerwise_backend and self.use_ulysses_sp:
+            raise ValueError("layerwise visual-token pruning currently requires ulysses_sequence_parallel_size=1")
 
         self.use_dynamic_bsz = self.config.get("use_dynamic_bsz", False)
 
@@ -384,6 +386,7 @@ class DataParallelPPOActor(BasePPOActor):
             apply_pruning=apply_vision_token_pruning,
         )
         attention_mask = prepared_pruning_inputs.attention_mask
+        layerwise_attention_mask = prepared_pruning_inputs.layerwise_attention_mask
         multi_modal_inputs = (
             extract_multi_modal_inputs(prepared_pruning_inputs.per_sample_multi_modal_inputs)
             if prepared_pruning_inputs.per_sample_multi_modal_inputs
@@ -409,6 +412,12 @@ class DataParallelPPOActor(BasePPOActor):
                     input_ids.unsqueeze(-1), attention_mask
                 )  # input_ids_rmpad (total_nnz, ...)
                 input_ids_rmpad = input_ids_rmpad.transpose(0, 1)  # (1, total_nnz)
+                layerwise_attention_mask_rmpad = None
+                if layerwise_attention_mask is not None:
+                    layerwise_attention_mask_rmpad = index_first_axis(
+                        rearrange(layerwise_attention_mask.unsqueeze(-1), "b s ... -> (b s) ..."),
+                        indices,
+                    ).transpose(0, 1)
 
                 # unpad the position_ids to align the rotary
                 if position_ids.dim() == 3:
@@ -481,6 +490,11 @@ class DataParallelPPOActor(BasePPOActor):
 
                 # only pass input_ids and position_ids to enable flash_attn_varlen
                 extra_args = {}
+                if layerwise_attention_mask_rmpad is not None:
+                    extra_args["vision_token_pruning_mask"] = layerwise_attention_mask_rmpad
+                    extra_args["vision_token_prune_after_layer"] = (
+                        self.vision_token_pruning_config.prune_after_layer
+                    )
                 if self.use_fused_kernels:
                     extra_args["temperature"] = temperature
                     extra_args["return_dict"] = True
@@ -695,6 +709,11 @@ class DataParallelPPOActor(BasePPOActor):
 
             else:  # not using rmpad and no ulysses sp
                 extra_args = {}
+                if layerwise_attention_mask is not None:
+                    extra_args["vision_token_pruning_mask"] = layerwise_attention_mask
+                    extra_args["vision_token_prune_after_layer"] = (
+                        self.vision_token_pruning_config.prune_after_layer
+                    )
                 if self.use_fused_kernels:
                     extra_args["temperature"] = temperature
                     extra_args["return_dict"] = True

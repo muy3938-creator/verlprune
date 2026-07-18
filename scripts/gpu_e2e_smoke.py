@@ -24,7 +24,14 @@ def _make_image(path: Path):
     return image
 
 
-def run_rollout(model_path: str, output_dir: Path, keep_ratio: float) -> None:
+def run_rollout(
+    model_path: str,
+    output_dir: Path,
+    keep_ratio: float,
+    selector: str,
+    prune_after_layer: int,
+    batch_size: int,
+) -> None:
     # Importing and constructing vLLM before processor tensor work keeps its
     # worker process independent from a parent CUDA context.
     os.environ.setdefault("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
@@ -37,11 +44,21 @@ def run_rollout(model_path: str, output_dir: Path, keep_ratio: float) -> None:
     image_path = output_dir / "shapes.png"
     image = _make_image(image_path)
 
+    layerwise = prune_after_layer >= 0
+    architecture = (
+        "VerlLayerwisePrunedQwen2_5VLForConditionalGeneration"
+        if layerwise
+        else "VerlPrunedQwen2_5VLForConditionalGeneration"
+    )
+    pruning_config = {"keep_ratio": keep_ratio, "selector": selector}
+    if layerwise:
+        pruning_config["prune_after_layer"] = prune_after_layer
+
     llm = LLM(
         model=model_path,
         dtype="bfloat16",
         max_model_len=512,
-        max_num_seqs=1,
+        max_num_seqs=batch_size,
         max_num_batched_tokens=512,
         gpu_memory_utilization=0.5,
         kv_cache_memory_bytes=128 * 1024 * 1024,
@@ -49,10 +66,12 @@ def run_rollout(model_path: str, output_dir: Path, keep_ratio: float) -> None:
         limit_mm_per_prompt={"image": 1, "video": 0},
         enable_return_routed_experts=True,
         video_pruning_rate=1.0 - keep_ratio,
+        enable_chunked_prefill=not layerwise,
+        enable_prefix_caching=False,
         hf_overrides={
-            "architectures": ["VerlRandomPrunedQwen2_5VLForConditionalGeneration"],
+            "architectures": [architecture],
             "text_config": {"num_experts_per_tok": 1},
-            "vision_token_pruning": {"keep_ratio": keep_ratio},
+            "vision_token_pruning": pruning_config,
         },
     )
 
@@ -77,15 +96,25 @@ def run_rollout(model_path: str, output_dir: Path, keep_ratio: float) -> None:
     merge_size = int(processor.image_processor.merge_size)
     original_visual_tokens = int(grid[0] * grid[1] * grid[2] // (merge_size**2))
 
-    result = llm.generate(
-        {"prompt": prompt, "multi_modal_data": {"image": image}},
+    results = llm.generate(
+        [{"prompt": prompt, "multi_modal_data": {"image": image}} for _ in range(batch_size)],
         SamplingParams(max_tokens=20, temperature=0.0),
-    )[0].outputs[0]
-    selection = decode_rollout_selection(
-        result.routed_experts,
-        keep_ratio=keep_ratio,
-        original_visual_token_count=original_visual_tokens,
     )
+    decoded_results = []
+    for request_index, request_output in enumerate(results):
+        result = request_output.outputs[0]
+        selection = decode_rollout_selection(
+            result.routed_experts,
+            keep_ratio=keep_ratio,
+            original_visual_token_count=original_visual_tokens,
+            selector=selector,
+        )
+        decoded_results.append((result, selection))
+        print(
+            f"request={request_index} generated_tokens={len(result.token_ids)} "
+            f"visual_tokens={original_visual_tokens}->{len(selection.kept_visual_indices)}"
+        )
+    result, selection = decoded_results[0]
     record = {
         "model_path": model_path,
         "image_path": str(image_path),
@@ -94,6 +123,9 @@ def run_rollout(model_path: str, output_dir: Path, keep_ratio: float) -> None:
         "generated_text": result.text,
         "selection": selection.to_wire(),
         "image_grid_thw": grid,
+        "prune_after_layer": prune_after_layer,
+        "selector": selector,
+        "rollout_batch_size": batch_size,
     }
     (output_dir / "rollout.json").write_text(
         json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -103,6 +135,8 @@ def run_rollout(model_path: str, output_dir: Path, keep_ratio: float) -> None:
     print(f"image_grid_thw={grid}")
     print(f"generated_tokens={len(result.token_ids)}")
     print(f"visual_tokens={original_visual_tokens}->{len(selection.kept_visual_indices)}")
+    print(f"prune_after_layer={prune_after_layer}")
+    print(f"selector={selector}")
     print(f"first_kept_indices={list(selection.kept_visual_indices[:8])}")
     print(f"last_kept_index={selection.kept_visual_indices[-1]}")
     print("E2E_STAGE_ROLLOUT=PASS")
@@ -144,7 +178,7 @@ def _distillation_loss(student_logits, teacher_logits, response_ids):
     return loss, metrics
 
 
-def run_train_step(output_dir: Path, learning_rate: float) -> None:
+def run_train_step(output_dir: Path, learning_rate: float, steps: int) -> None:
     import torch
     from PIL import Image
     from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
@@ -159,6 +193,8 @@ def run_train_step(output_dir: Path, learning_rate: float) -> None:
     )
 
     record = json.loads((output_dir / "rollout.json").read_text(encoding="utf-8"))
+    prune_after_layer = int(record.get("prune_after_layer", -1))
+    layerwise = prune_after_layer >= 0
     model_path = record["model_path"]
     image = Image.open(record["image_path"]).convert("RGB")
     processor = AutoProcessor.from_pretrained(model_path, use_fast=False)
@@ -179,9 +215,10 @@ def run_train_step(output_dir: Path, learning_rate: float) -> None:
         [multimodal_inputs],
         image_token_id=image_token_id,
         expected_keep_ratio=selection.keep_ratio,
+        expected_selector=selection.selector,
     )
     compact_keep = student_attention_mask[0].bool()
-    student_input_ids = full_input_ids[:, compact_keep]
+    student_input_ids = full_input_ids if layerwise else full_input_ids[:, compact_keep]
 
     vision_position_ids = get_rope_index(
         processor,
@@ -192,7 +229,9 @@ def run_train_step(output_dir: Path, learning_rate: float) -> None:
     text_position_ids = torch.arange(full_input_ids.shape[1], dtype=torch.long).unsqueeze(0)
     full_position_ids = torch.cat((text_position_ids, vision_position_ids), dim=0)
     teacher_position_ids = full_position_ids.unsqueeze(1)
-    student_position_ids = full_position_ids[:, compact_keep].unsqueeze(1)
+    student_position_ids = (
+        teacher_position_ids if layerwise else full_position_ids[:, compact_keep].unsqueeze(1)
+    )
 
     model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
         model_path,
@@ -220,10 +259,15 @@ def run_train_step(output_dir: Path, learning_rate: float) -> None:
     teacher_position_ids = teacher_position_ids.cuda()
     student_position_ids = student_position_ids.cuda()
     keep_mask = multimodal_inputs[KEEP_MASK_KEY].cuda()
+    layerwise_attention_mask = student_attention_mask.cuda()
 
     response_length = response_ids.shape[1]
     teacher_prompt_length = prompt_ids.shape[1]
-    student_prompt_length = int(student_attention_mask[:, :teacher_prompt_length].sum().item())
+    student_prompt_length = (
+        teacher_prompt_length
+        if layerwise
+        else int(student_attention_mask[:, :teacher_prompt_length].sum().item())
+    )
     with torch.no_grad():
         teacher_output = model(
             input_ids=full_input_ids,
@@ -237,24 +281,42 @@ def run_train_step(output_dir: Path, learning_rate: float) -> None:
             :, teacher_prompt_length - 1 : teacher_prompt_length - 1 + response_length
         ].detach()
 
-    optimizer.zero_grad(set_to_none=True)
-    student_output = model(
-        input_ids=student_input_ids,
-        attention_mask=None,
-        position_ids=student_position_ids,
-        pixel_values=pixel_values,
-        image_grid_thw=image_grid_thw,
-        vision_token_keep_mask=keep_mask,
-        use_cache=False,
-    )
-    student_logits = student_output.logits[
-        :, student_prompt_length - 1 : student_prompt_length - 1 + response_length
-    ]
-    loss_before, metrics_before = _distillation_loss(student_logits, teacher_logits, response_ids)
     parameter_before = trainable[0].detach().float().clone()
-    loss_before.backward()
-    grad_norm = torch.nn.utils.clip_grad_norm_(trainable, max_norm=1.0)
-    optimizer.step()
+    step_losses = []
+    step_raw_jsd = []
+    step_grad_norms = []
+    metrics_before = None
+    student_kwargs = (
+        {
+            "vision_token_pruning_mask": layerwise_attention_mask,
+            "vision_token_prune_after_layer": prune_after_layer,
+        }
+        if layerwise
+        else {"vision_token_keep_mask": keep_mask}
+    )
+    for _ in range(steps):
+        optimizer.zero_grad(set_to_none=True)
+        student_output = model(
+            input_ids=student_input_ids,
+            attention_mask=None,
+            position_ids=student_position_ids,
+            pixel_values=pixel_values,
+            image_grid_thw=image_grid_thw,
+            use_cache=False,
+            **student_kwargs,
+        )
+        student_logits = student_output.logits[
+            :, student_prompt_length - 1 : student_prompt_length - 1 + response_length
+        ]
+        loss, metrics = _distillation_loss(student_logits, teacher_logits, response_ids)
+        if metrics_before is None:
+            metrics_before = metrics
+        loss.backward()
+        grad_norm = torch.nn.utils.clip_grad_norm_(trainable, max_norm=1.0)
+        optimizer.step()
+        step_losses.append(float(loss.detach()))
+        step_raw_jsd.append(metrics["self_distillation/raw_jsd_token_mean"])
+        step_grad_norms.append(float(grad_norm))
     torch.cuda.synchronize()
     parameter_delta = (trainable[0].detach().float() - parameter_before).norm().item()
 
@@ -265,8 +327,8 @@ def run_train_step(output_dir: Path, learning_rate: float) -> None:
             position_ids=student_position_ids,
             pixel_values=pixel_values,
             image_grid_thw=image_grid_thw,
-            vision_token_keep_mask=keep_mask,
             use_cache=False,
+            **student_kwargs,
         )
         updated_logits = updated_output.logits[
             :, student_prompt_length - 1 : student_prompt_length - 1 + response_length
@@ -280,11 +342,16 @@ def run_train_step(output_dir: Path, learning_rate: float) -> None:
         "full_visual_tokens": selection.original_visual_token_count,
         "student_visual_tokens": len(selection.kept_visual_indices),
         "response_tokens": response_length,
-        "loss_before": float(loss_before.detach()),
+        "prune_after_layer": prune_after_layer,
+        "training_steps": steps,
+        "step_losses": step_losses,
+        "step_raw_jsd": step_raw_jsd,
+        "step_grad_norms": step_grad_norms,
+        "loss_before": step_losses[0],
         "loss_after": float(loss_after.detach()),
         "raw_jsd_before": metrics_before["self_distillation/raw_jsd_token_mean"],
         "raw_jsd_after": metrics_after["self_distillation/raw_jsd_token_mean"],
-        "grad_norm": float(grad_norm),
+        "grad_norm": step_grad_norms[-1],
         "parameter_delta_norm": parameter_delta,
         "trainable_parameters": sum(parameter.numel() for parameter in trainable),
         "attention_backend": model.config._attn_implementation,
@@ -296,7 +363,7 @@ def run_train_step(output_dir: Path, learning_rate: float) -> None:
         print(f"{key}={value}")
     if not all(
         torch.isfinite(torch.tensor(value))
-        for value in (summary["loss_before"], summary["loss_after"], summary["grad_norm"])
+        for value in (*summary["step_losses"], *summary["step_grad_norms"], summary["loss_after"])
     ):
         raise RuntimeError("training step produced a non-finite metric")
     if parameter_delta <= 0:
@@ -310,12 +377,23 @@ def main() -> None:
     parser.add_argument("--model", default="Qwen/Qwen2.5-VL-3B-Instruct")
     parser.add_argument("--output-dir", type=Path, default=Path("/tmp/opd_e2e"))
     parser.add_argument("--keep-ratio", type=float, default=0.5)
+    parser.add_argument("--selector", default="random")
+    parser.add_argument("--prune-after-layer", type=int, default=-1)
     parser.add_argument("--learning-rate", type=float, default=1e-5)
+    parser.add_argument("--steps", type=int, default=3)
+    parser.add_argument("--batch-size", type=int, default=1)
     args = parser.parse_args()
     if args.stage == "rollout":
-        run_rollout(args.model, args.output_dir, args.keep_ratio)
+        run_rollout(
+            args.model,
+            args.output_dir,
+            args.keep_ratio,
+            args.selector,
+            args.prune_after_layer,
+            args.batch_size,
+        )
     else:
-        run_train_step(args.output_dir, args.learning_rate)
+        run_train_step(args.output_dir, args.learning_rate, args.steps)
 
 
 if __name__ == "__main__":

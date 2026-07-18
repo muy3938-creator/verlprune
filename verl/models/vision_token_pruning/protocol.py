@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Any
 
-SELECTION_PROTOCOL_VERSION = 1
+SELECTION_PROTOCOL_VERSION = 2
 
 
 def compute_keep_count(token_count: int, keep_ratio: float) -> int:
@@ -14,11 +14,12 @@ def compute_keep_count(token_count: int, keep_ratio: float) -> int:
 
 @dataclass(frozen=True)
 class VisionTokenSelection:
-    """Exact layer-0 selection produced by rollout and replayed by the actor."""
+    """Exact rollout selection replayed by the backend-neutral actor."""
 
     keep_ratio: float
     original_visual_token_count: int
     kept_visual_indices: tuple[int, ...]
+    selector: str = "random"
     version: int = SELECTION_PROTOCOL_VERSION
 
     def __post_init__(self) -> None:
@@ -31,6 +32,8 @@ class VisionTokenSelection:
             raise ValueError("selection keep_ratio must be in (0, 1]")
         if self.original_visual_token_count <= 0:
             raise ValueError("original_visual_token_count must be positive")
+        if not self.selector or not self.selector.strip():
+            raise ValueError("selection selector must be a non-empty name")
         expected_count = compute_keep_count(self.original_visual_token_count, self.keep_ratio)
         if len(self.kept_visual_indices) != expected_count:
             raise ValueError(
@@ -47,19 +50,27 @@ class VisionTokenSelection:
         return {
             "version": self.version,
             "keep_ratio": self.keep_ratio,
+            "selector": self.selector,
             "original_visual_token_count": self.original_visual_token_count,
             "kept_visual_indices": list(self.kept_visual_indices),
         }
 
     @classmethod
     def from_wire(cls, value: dict[str, Any]) -> "VisionTokenSelection":
-        required = {"version", "keep_ratio", "original_visual_token_count", "kept_visual_indices"}
+        required = {
+            "version",
+            "keep_ratio",
+            "selector",
+            "original_visual_token_count",
+            "kept_visual_indices",
+        }
         missing = required.difference(value)
         if missing:
             raise ValueError(f"visual-token selection is missing fields: {sorted(missing)}")
         return cls(
             version=int(value["version"]),
             keep_ratio=float(value["keep_ratio"]),
+            selector=str(value["selector"]),
             original_visual_token_count=int(value["original_visual_token_count"]),
             kept_visual_indices=tuple(int(index) for index in value["kept_visual_indices"]),
         )
@@ -70,6 +81,7 @@ def decode_rollout_selection(
     *,
     keep_ratio: float,
     original_visual_token_count: int,
+    selector: str = "random",
 ) -> VisionTokenSelection:
     """Decode positive 1-based indices carried by vLLM's replay channel."""
 
@@ -84,6 +96,7 @@ def decode_rollout_selection(
     kept_indices = tuple(sorted({value - 1 for value in encoded if value > 0}))
     return VisionTokenSelection(
         keep_ratio=keep_ratio,
+        selector=selector,
         original_visual_token_count=original_visual_token_count,
         kept_visual_indices=kept_indices,
     )

@@ -64,6 +64,26 @@ def test_actor_rejects_tampered_keep_mask():
         )
 
 
+def test_actor_rejects_rollout_from_a_different_selector():
+    selection = VisionTokenSelection(
+        keep_ratio=0.5,
+        selector="uniform",
+        original_visual_token_count=4,
+        kept_visual_indices=(0, 3),
+    )
+    inputs = attach_selection_to_multi_modal_inputs({}, selection.to_wire())
+
+    with pytest.raises(ValueError, match="does not match actor selector"):
+        replay_rollout_selection_on_attention_mask(
+            torch.tensor([[99, 99, 99, 99]]),
+            torch.ones((1, 4), dtype=torch.long),
+            [inputs],
+            image_token_id=99,
+            expected_keep_ratio=0.5,
+            expected_selector="random",
+        )
+
+
 def test_teacher_preparation_removes_all_pruning_protocol_fields():
     selection = VisionTokenSelection(
         keep_ratio=0.5,
@@ -83,3 +103,40 @@ def test_teacher_preparation_removes_all_pruning_protocol_fields():
 
     assert KEEP_MASK_KEY not in prepared.per_sample_multi_modal_inputs[0]
     assert torch.equal(prepared.attention_mask, torch.ones((1, 2), dtype=torch.long))
+
+
+def test_layerwise_actor_keeps_full_input_and_builds_post_boundary_mask():
+    selections = [
+        VisionTokenSelection(
+            keep_ratio=0.5,
+            original_visual_token_count=4,
+            kept_visual_indices=(0, 3),
+        ),
+        VisionTokenSelection(
+            keep_ratio=0.5,
+            original_visual_token_count=2,
+            kept_visual_indices=(1,),
+        ),
+    ]
+    multimodal_inputs = [
+        attach_selection_to_multi_modal_inputs({"pixel_values": torch.ones(1)}, selection.to_wire())
+        for selection in selections
+    ]
+    input_ids = torch.tensor([[7, 99, 99, 99, 99, 8], [0, 0, 7, 99, 99, 8]])
+    attention_mask = torch.tensor([[1, 1, 1, 1, 1, 1], [0, 0, 1, 1, 1, 1]])
+
+    prepared = prepare_actor_pruning_inputs(
+        input_ids=input_ids,
+        attention_mask=attention_mask,
+        per_sample_multi_modal_inputs=multimodal_inputs,
+        image_token_id=99,
+        config=VisionTokenPruningConfig(enabled=True, keep_ratio=0.5, prune_after_layer=3),
+        apply_pruning=True,
+    )
+
+    assert torch.equal(prepared.attention_mask, attention_mask)
+    assert prepared.layerwise_attention_mask.tolist() == [
+        [1, 1, 0, 0, 1, 1],
+        [0, 0, 1, 0, 1, 1],
+    ]
+    assert all(KEEP_MASK_KEY not in inputs for inputs in prepared.per_sample_multi_modal_inputs)

@@ -87,3 +87,9 @@ vision_token_pruning:
 
   # fraction of visual tokens retained by rollout selection
   keep_ratio: 0.5
+
+  # rollout-side selector registered in verl.models.vision_token_pruning.selectors
+  selector: random
+
+  # -1 uses layer-0 physical pruning; N prunes attention/KV after decoder layer N
+  prune_after_layer: -1

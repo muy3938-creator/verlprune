@@ -54,6 +54,7 @@ class PreparedActorPruningInputs:
 
     attention_mask: torch.Tensor
     per_sample_multi_modal_inputs: list[dict[str, Any] | None]
+    layerwise_attention_mask: torch.Tensor | None = None
 
 
 def prepare_actor_pruning_inputs(
@@ -86,7 +87,17 @@ def prepare_actor_pruning_inputs(
         per_sample_multi_modal_inputs,
         image_token_id=image_token_id,
         expected_keep_ratio=config.keep_ratio,
+        expected_selector=config.selector,
     )
+    if config.uses_layerwise_backend:
+        return PreparedActorPruningInputs(
+            attention_mask=attention_mask,
+            per_sample_multi_modal_inputs=[
+                strip_pruning_metadata(inputs) if inputs is not None else None
+                for inputs in per_sample_multi_modal_inputs
+            ],
+            layerwise_attention_mask=replayed_attention_mask,
+        )
     return PreparedActorPruningInputs(
         attention_mask=replayed_attention_mask,
         per_sample_multi_modal_inputs=[
@@ -138,6 +149,7 @@ def replay_rollout_selection_on_attention_mask(
     *,
     image_token_id: int,
     expected_keep_ratio: float,
+    expected_selector: str = "random",
 ) -> torch.Tensor:
     """Remove the exact rollout-selected image tokens from the actor sequence."""
 
@@ -159,6 +171,11 @@ def replay_rollout_selection_on_attention_mask(
             raise ValueError(
                 f"sample {sample_index} rollout keep_ratio {selection.keep_ratio} "
                 f"does not match actor keep_ratio {expected_keep_ratio}"
+            )
+        if selection.selector != expected_selector:
+            raise ValueError(
+                f"sample {sample_index} rollout selector {selection.selector!r} "
+                f"does not match actor selector {expected_selector!r}"
             )
         if not torch.equal(keep_mask.cpu(), selection_to_keep_mask(selection)):
             raise ValueError(f"sample {sample_index} keep mask does not match rollout selection")
