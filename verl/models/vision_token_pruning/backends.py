@@ -42,8 +42,17 @@ PHYSICAL_BACKEND = VllmPruningBackendProfile(
     requires_eager=True,
 )
 
-LAYERWISE_BACKEND = VllmPruningBackendProfile(
-    name="layerwise",
+LAYERWISE_FLEX_BACKEND = VllmPruningBackendProfile(
+    name="layerwise_flex",
+    architectures={
+        "qwen2_5_vl": "VerlLayerwiseFlexPrunedQwen2_5VLForConditionalGeneration",
+    },
+    requires_eager=True,
+    supports_chunked_prefill=False,
+)
+
+LAYERWISE_COMPACT_FLASH_BACKEND = VllmPruningBackendProfile(
+    name="layerwise_compact_flash",
     architectures={
         "qwen2_5_vl": "VerlLayerwisePrunedQwen2_5VLForConditionalGeneration",
     },
@@ -53,7 +62,11 @@ LAYERWISE_BACKEND = VllmPruningBackendProfile(
 
 
 def resolve_vllm_backend(config: VisionTokenPruningConfig) -> VllmPruningBackendProfile:
-    return LAYERWISE_BACKEND if config.uses_layerwise_backend else PHYSICAL_BACKEND
+    if not config.uses_layerwise_backend:
+        return PHYSICAL_BACKEND
+    if config.layerwise_backend == "flex":
+        return LAYERWISE_FLEX_BACKEND
+    return LAYERWISE_COMPACT_FLASH_BACKEND
 
 
 def build_vllm_pruning_launch_options(
@@ -79,6 +92,8 @@ def build_vllm_pruning_launch_options(
         cli_args["enable_chunked_prefill"] = False
     if not backend.supports_prefix_caching:
         cli_args["enable_prefix_caching"] = False
+    if backend is LAYERWISE_FLEX_BACKEND:
+        cli_args["attention_config"] = {"backend": "FLEX_ATTENTION"}
     return VllmPruningLaunchOptions(
         hf_overrides={
             "architectures": [backend.architecture_for(model_type)],

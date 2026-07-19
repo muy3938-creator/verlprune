@@ -66,3 +66,26 @@ def test_legacy_module_strategy_remains_compatible():
     )
 
     assert selected.tolist() == [0, 2, 5]
+
+
+def test_decoder_key_norm_strategy_uses_layer_state_and_keeps_anchor():
+    config = VisionTokenPruningConfig(
+        enabled=True,
+        keep_ratio=0.5,
+        prune_after_layer=15,
+        selector="key_norm",
+        selector_input="decoder_key",
+    )
+    engine = VisionTokenSelectionEngine(config, seed=3)
+    key = torch.tensor([[[1.0]], [[4.0]], [[2.0]], [[100.0]]])
+
+    selected = engine.select_decoder_states(
+        query_states=torch.zeros_like(key),
+        key_states=key,
+        value_states=torch.zeros_like(key),
+        layer_index=15,
+    )
+
+    # The final token is always the MRoPE anchor, not a score competitor.
+    assert selected.tolist() == [1, 3]
+    assert engine.selection_count == 1

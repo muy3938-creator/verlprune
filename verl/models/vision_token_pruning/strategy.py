@@ -24,6 +24,10 @@ class VisionTokenSelectionRequest:
     generator: torch.Generator | None = None
     features: torch.Tensor | None = None
     grid_thw: torch.Tensor | list[int] | None = None
+    query_states: torch.Tensor | None = None
+    key_states: torch.Tensor | None = None
+    value_states: torch.Tensor | None = None
+    layer_index: int | None = None
     options: Mapping[str, Any] = field(default_factory=dict)
 
 
@@ -53,6 +57,20 @@ def _uniform_strategy(request: VisionTokenSelectionRequest) -> torch.Tensor:
         steps=request.keep_count,
         device=request.device,
     ).round().long()
+
+
+def _key_norm_strategy(request: VisionTokenSelectionRequest) -> torch.Tensor:
+    """Keep the largest decoder-key norms plus the final MRoPE anchor."""
+
+    if request.key_states is None:
+        raise ValueError("key_norm requires decoder key states")
+    if request.keep_count == request.token_count:
+        return torch.arange(request.token_count, device=request.device)
+    if request.keep_count == 1:
+        return torch.tensor([request.token_count - 1], device=request.device)
+    scores = request.key_states[:-1].float().square().sum(dim=tuple(range(1, request.key_states.ndim)))
+    selected = scores.topk(request.keep_count - 1, sorted=False).indices
+    return torch.cat((selected, selected.new_tensor([request.token_count - 1]))).sort().values
 
 
 def register_vision_token_strategy(
@@ -201,6 +219,34 @@ class VisionTokenSelectionEngine:
         )
         return run_vision_token_strategy(self.config.selector, request)
 
+    def select_decoder_states(
+        self,
+        *,
+        query_states: torch.Tensor,
+        key_states: torch.Tensor,
+        value_states: torch.Tensor,
+        layer_index: int,
+    ) -> torch.Tensor:
+        token_count = len(key_states)
+        keep_count = compute_keep_count(token_count, self.config.keep_ratio)
+        generator = torch.Generator(device=key_states.device)
+        generator.manual_seed(self.seed + self._selection_counter)
+        self._selection_counter += 1
+        request = VisionTokenSelectionRequest(
+            token_count=token_count,
+            keep_count=keep_count,
+            device=key_states.device,
+            generator=generator,
+            features=key_states,
+            query_states=query_states,
+            key_states=key_states,
+            value_states=value_states,
+            layer_index=layer_index,
+            options=self.config.selector_kwargs,
+        )
+        return run_vision_token_strategy(self.config.selector, request)
+
 
 register_vision_token_strategy("random", _random_strategy)
 register_vision_token_strategy("uniform", _uniform_strategy)
+register_vision_token_strategy("key_norm", _key_norm_strategy)

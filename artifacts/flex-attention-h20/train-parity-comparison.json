@@ -1,0 +1,43 @@
+{
+  "settings": {
+    "keep_ratio": 0.1,
+    "prune_after_layer": 15,
+    "selector": "uniform",
+    "training_steps": 3,
+    "learning_rate": 1e-05
+  },
+  "flex": {
+    "step_losses": [
+      0.02006066031754017,
+      0.02007673867046833,
+      0.020070837810635567
+    ],
+    "step_grad_norms": [
+      0.030517578125,
+      0.030517578125,
+      0.030517578125
+    ],
+    "loss_after": 0.020072273910045624,
+    "raw_jsd_after": 0.020072273910045624,
+    "parameter_delta_norm": 0.026080915704369545,
+    "status": "pass"
+  },
+  "compact_flash": {
+    "step_losses": [
+      0.02006066031754017,
+      0.02007673867046833,
+      0.020070837810635567
+    ],
+    "step_grad_norms": [
+      0.030517578125,
+      0.030517578125,
+      0.030517578125
+    ],
+    "loss_after": 0.020072273910045624,
+    "raw_jsd_after": 0.020072273910045624,
+    "parameter_delta_norm": 0.026080915704369545,
+    "status": "pass"
+  },
+  "exact_match": true,
+  "note": "Both independent remote runs printed E2E_STAGE_TRAIN_STEP=PASS. CNB reclaimed the workspace while the second raw JSON was being downloaded."
+}

@@ -1,0 +1,60 @@
+{
+  "all_greedy_tokens_match": true,
+  "max_sampled_logprob_abs_diff": 0.005661368370056152,
+  "sampled_tolerance": 0.02,
+  "comparisons": [
+    {
+      "step": 0,
+      "phase": "prefill",
+      "token_id": 785,
+      "transformers_argmax_token_id": 785,
+      "sampled_logprob_abs_diff": 0.0008494853973388672,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.12415075302124023,
+      "compared_logprob_count": 151936,
+      "all_logprob_abs_diff_mean": 0.04169296473264694,
+      "all_logprob_abs_diff_p99": 0.12414932250976562,
+      "all_logprob_abs_diff_max": 0.24914932250976562
+    },
+    {
+      "step": 1,
+      "phase": "decode",
+      "token_id": 2115,
+      "transformers_argmax_token_id": 2115,
+      "sampled_logprob_abs_diff": 0.005661368370056152,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.1306614875793457,
+      "compared_logprob_count": 151936,
+      "all_logprob_abs_diff_mean": 0.03445856645703316,
+      "all_logprob_abs_diff_p99": 0.1072235107421875,
+      "all_logprob_abs_diff_max": 0.1931610107421875
+    },
+    {
+      "step": 2,
+      "phase": "decode",
+      "token_id": 6083,
+      "transformers_argmax_token_id": 6083,
+      "sampled_logprob_abs_diff": 0.0037335380911827087,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.12873363494873047,
+      "compared_logprob_count": 151936,
+      "all_logprob_abs_diff_mean": 0.033896151930093765,
+      "all_logprob_abs_diff_p99": 0.12126731872558594,
+      "all_logprob_abs_diff_max": 0.24626731872558594
+    },
+    {
+      "step": 3,
+      "phase": "decode",
+      "token_id": 374,
+      "transformers_argmax_token_id": 374,
+      "sampled_logprob_abs_diff": 8.244987111538649e-05,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.12508296966552734,
+      "compared_logprob_count": 151936,
+      "all_logprob_abs_diff_mean": 0.044807080179452896,
+      "all_logprob_abs_diff_p99": 0.12508201599121094,
+      "all_logprob_abs_diff_max": 0.20320701599121094
+    }
+  ],
+  "within_tolerance": true
+}

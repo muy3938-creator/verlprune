@@ -1,0 +1,33 @@
+{
+  "generated_text": "The left shape is red and the right shape is blue.",
+  "full_sequence_tokens": 112,
+  "student_sequence_tokens": 112,
+  "full_visual_tokens": 64,
+  "student_visual_tokens": 6,
+  "response_tokens": 13,
+  "prune_after_layer": 15,
+  "training_steps": 3,
+  "step_losses": [
+    0.02006066031754017,
+    0.02007673867046833,
+    0.020070837810635567
+  ],
+  "step_raw_jsd": [
+    0.02006066031754017,
+    0.02007673867046833,
+    0.020070837810635567
+  ],
+  "step_grad_norms": [
+    0.030517578125,
+    0.030517578125,
+    0.030517578125
+  ],
+  "loss_before": 0.02006066031754017,
+  "loss_after": 0.020072273910045624,
+  "raw_jsd_before": 0.02006066031754017,
+  "raw_jsd_after": 0.020072273910045624,
+  "grad_norm": 0.030517578125,
+  "parameter_delta_norm": 0.026080915704369545,
+  "trainable_parameters": 4194304,
+  "attention_backend": "flash_attention_2"
+}

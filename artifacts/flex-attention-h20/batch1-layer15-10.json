@@ -1,0 +1,56 @@
+{
+  "model_path": "/root/models/Qwen2.5-VL-3B-Instruct",
+  "image_path": "/root/flex-keynorm-layer15-b1-r0.10/shapes.png",
+  "prompt": "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>Describe the two colored shapes from left to right in one short sentence.<|im_end|>\n<|im_start|>assistant\n",
+  "generated_token_ids": [
+    785,
+    2115,
+    6083,
+    374,
+    2518,
+    323,
+    279,
+    1290,
+    6083,
+    374,
+    6303,
+    13,
+    151645
+  ],
+  "generated_text": "The left shape is red and the right shape is blue.",
+  "selection": {
+    "version": 3,
+    "keep_ratio": 0.1,
+    "selector": "key_norm",
+    "selector_fingerprint": "00d2e00db03f08e53ce3a59adb2629683a50ef2d105e98ac887df3e2c9ade3d7",
+    "original_visual_token_count": 64,
+    "kept_visual_indices": [
+      20,
+      28,
+      37,
+      52,
+      58,
+      63
+    ]
+  },
+  "image_grid_thw": [
+    1,
+    16,
+    16
+  ],
+  "prune_after_layer": 15,
+  "selector": "key_norm",
+  "selector_kwargs": {},
+  "rollout_batch_size": 1,
+  "layerwise_backend": "flex",
+  "selector_input": "decoder_key",
+  "rollout_seconds": 0.7816970497369766,
+  "rollout_latencies": [
+    0.39056605473160744,
+    0.3911309950053692
+  ],
+  "median_rollout_seconds": 0.3908485248684883,
+  "warmup_runs": 1,
+  "measure_runs": 2,
+  "output_tokens_per_second": 33.26096728745287
+}

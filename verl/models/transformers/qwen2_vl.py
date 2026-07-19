@@ -62,6 +62,19 @@ if is_npu_available:
 _flash_deterministic_enabled = os.getenv("FLASH_ATTENTION_DETERMINISTIC", "0") == "1"
 
 
+def _unwrap_vision_embeddings(vision_output: torch.Tensor | object) -> torch.Tensor:
+    """Normalize Transformers 4.x tensors and 5.x vision model outputs."""
+
+    if isinstance(vision_output, torch.Tensor):
+        return vision_output
+    pooler_output = getattr(vision_output, "pooler_output", None)
+    if isinstance(pooler_output, torch.Tensor):
+        return pooler_output
+    raise TypeError(
+        "Qwen vision encoder must return a tensor or an output with tensor pooler_output"
+    )
+
+
 def get_rope_index(
     processor,
     input_ids: torch.Tensor,
@@ -373,7 +386,9 @@ def _get_input_embeds(
     inputs_embeds = model.get_input_embeddings()(input_ids)
     if pixel_values is not None:
         pixel_values = pixel_values.type(model.visual.dtype)
-        image_embeds = model.visual(pixel_values, grid_thw=image_grid_thw)
+        image_embeds = _unwrap_vision_embeddings(
+            model.visual(pixel_values, grid_thw=image_grid_thw)
+        )
 
         image_embeds = prune_visual_embeddings(image_embeds, vision_token_keep_mask)
         n_image_tokens = (input_ids == model.config.image_token_id).sum().item()
@@ -393,7 +408,9 @@ def _get_input_embeds(
 
     if pixel_values_videos is not None:
         pixel_values_videos = pixel_values_videos.type(model.visual.dtype)
-        video_embeds = model.visual(pixel_values_videos, grid_thw=video_grid_thw)
+        video_embeds = _unwrap_vision_embeddings(
+            model.visual(pixel_values_videos, grid_thw=video_grid_thw)
+        )
         n_video_tokens = (input_ids == model.config.video_token_id).sum().item()
         n_video_features = video_embeds.shape[0]
         if n_video_tokens != n_video_features:

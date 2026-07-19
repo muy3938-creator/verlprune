@@ -4,7 +4,18 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-_RESERVED_SELECTOR_KWARGS = {"token_count", "keep_count", "device", "generator", "features", "grid_thw"}
+_RESERVED_SELECTOR_KWARGS = {
+    "token_count",
+    "keep_count",
+    "device",
+    "generator",
+    "features",
+    "grid_thw",
+    "query_states",
+    "key_states",
+    "value_states",
+    "layer_index",
+}
 
 
 def compute_selector_fingerprint(selector: str, selector_kwargs: Mapping[str, Any] | None = None) -> str:
@@ -43,6 +54,8 @@ class VisionTokenPruningConfig:
     enabled: bool = False
     keep_ratio: float = 0.5
     prune_after_layer: int = -1
+    layerwise_backend: str = "flex"
+    selector_input: str = "vision_embedding"
     selector: str = "random"
     selector_kwargs: dict[str, Any] = field(default_factory=dict)
 
@@ -53,6 +66,14 @@ class VisionTokenPruningConfig:
             raise ValueError("enabled vision token pruning requires keep_ratio < 1")
         if self.prune_after_layer < -1:
             raise ValueError("vision token pruning prune_after_layer must be >= -1")
+        if self.layerwise_backend not in {"flex", "compact_flash"}:
+            raise ValueError("vision token pruning layerwise_backend must be 'flex' or 'compact_flash'")
+        if self.selector_input not in {"vision_embedding", "decoder_key"}:
+            raise ValueError(
+                "vision token pruning selector_input must be 'vision_embedding' or 'decoder_key'"
+            )
+        if self.selector_input == "decoder_key" and self.prune_after_layer < 0:
+            raise ValueError("decoder_key selection requires prune_after_layer >= 0")
         if not self.selector or not self.selector.strip():
             raise ValueError("vision token pruning selector must be a non-empty name")
         self.selector = self.selector.strip()
@@ -65,7 +86,9 @@ class VisionTokenPruningConfig:
 
     @property
     def backend_name(self) -> str:
-        return "layerwise" if self.uses_layerwise_backend else "physical"
+        if not self.uses_layerwise_backend:
+            return "physical"
+        return f"layerwise_{self.layerwise_backend}"
 
     @property
     def selector_fingerprint(self) -> str:
@@ -79,6 +102,8 @@ class VisionTokenPruningConfig:
         }
         if self.uses_layerwise_backend:
             payload["prune_after_layer"] = self.prune_after_layer
+            payload["layerwise_backend"] = self.layerwise_backend
+            payload["selector_input"] = self.selector_input
         return payload
 
 

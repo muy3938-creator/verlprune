@@ -4,12 +4,22 @@ from verl.models.vision_token_pruning.config import VisionTokenPruningConfig
 from verl.models.vision_token_pruning.rollout import VisionTokenPruningRollout
 
 
-def make_rollout(*, enabled=True, prune_after_layer=-1, selector="random", selector_kwargs=None):
+def make_rollout(
+    *,
+    enabled=True,
+    prune_after_layer=-1,
+    layerwise_backend="flex",
+    selector_input="vision_embedding",
+    selector="random",
+    selector_kwargs=None,
+):
     return VisionTokenPruningRollout(
         VisionTokenPruningConfig(
             enabled=enabled,
             keep_ratio=0.5,
             prune_after_layer=prune_after_layer,
+            layerwise_backend=layerwise_backend,
+            selector_input=selector_input,
             selector=selector,
             selector_kwargs=selector_kwargs or {},
         ),
@@ -57,17 +67,20 @@ def test_layerwise_rollout_selects_batch_capable_oot_backend():
     options = make_rollout(prune_after_layer=15).build_launch_options(routing_replay_enabled=False)
 
     assert options.hf_overrides["architectures"] == [
-        "VerlLayerwisePrunedQwen2_5VLForConditionalGeneration"
+        "VerlLayerwiseFlexPrunedQwen2_5VLForConditionalGeneration"
     ]
     assert options.hf_overrides["vision_token_pruning"] == {
         "keep_ratio": 0.5,
         "selector": "random",
         "selector_kwargs": {},
         "prune_after_layer": 15,
+        "layerwise_backend": "flex",
+        "selector_input": "vision_embedding",
     }
     assert options.cli_args["enable_chunked_prefill"] is False
     assert options.cli_args["enable_prefix_caching"] is False
     assert options.cli_args["enforce_eager"] is True
+    assert options.cli_args["attention_config"] == {"backend": "FLEX_ATTENTION"}
     assert "max_num_seqs" not in options.cli_args
 
 

@@ -1,0 +1,80 @@
+{
+  "all_greedy_tokens_match": true,
+  "max_sampled_logprob_abs_diff": 0.014900118112564087,
+  "sampled_tolerance": 0.02,
+  "comparisons": [
+    {
+      "step": 0,
+      "phase": "prefill",
+      "token_id": 785,
+      "transformers_argmax_token_id": 785,
+      "sampled_logprob_abs_diff": 0.0008494853973388672,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.12415075302124023
+    },
+    {
+      "step": 1,
+      "phase": "decode",
+      "token_id": 2115,
+      "transformers_argmax_token_id": 2115,
+      "sampled_logprob_abs_diff": 0.005661368370056152,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.1306614875793457
+    },
+    {
+      "step": 2,
+      "phase": "decode",
+      "token_id": 6083,
+      "transformers_argmax_token_id": 6083,
+      "sampled_logprob_abs_diff": 0.0037335380911827087,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.12873363494873047
+    },
+    {
+      "step": 3,
+      "phase": "decode",
+      "token_id": 374,
+      "transformers_argmax_token_id": 374,
+      "sampled_logprob_abs_diff": 8.244987111538649e-05,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.12508296966552734
+    },
+    {
+      "step": 4,
+      "phase": "decode",
+      "token_id": 2518,
+      "transformers_argmax_token_id": 2518,
+      "sampled_logprob_abs_diff": 0.014900118112564087,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.13990020751953125
+    },
+    {
+      "step": 5,
+      "phase": "decode",
+      "token_id": 323,
+      "transformers_argmax_token_id": 323,
+      "sampled_logprob_abs_diff": 0.0005028247833251953,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.1255030632019043
+    },
+    {
+      "step": 6,
+      "phase": "decode",
+      "token_id": 279,
+      "transformers_argmax_token_id": 279,
+      "sampled_logprob_abs_diff": 0.0014391690492630005,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.12356042861938477
+    },
+    {
+      "step": 7,
+      "phase": "decode",
+      "token_id": 1290,
+      "transformers_argmax_token_id": 1290,
+      "sampled_logprob_abs_diff": 0.0004584591370075941,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.2495412826538086
+    }
+  ],
+  "within_tolerance": true
+}

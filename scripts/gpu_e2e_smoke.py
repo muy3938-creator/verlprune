@@ -10,6 +10,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import statistics
+import time
 from pathlib import Path
 
 
@@ -32,7 +34,14 @@ def run_rollout(
     selector_kwargs: dict,
     prune_after_layer: int,
     batch_size: int,
+    layerwise_backend: str,
+    selector_input: str,
+    gpu_memory_utilization: float,
+    warmup_runs: int,
+    measure_runs: int,
 ) -> None:
+    if warmup_runs < 0 or measure_runs < 1:
+        raise ValueError("warmup_runs must be >= 0 and measure_runs must be >= 1")
     # Importing and constructing vLLM before processor tensor work keeps its
     # worker process independent from a parent CUDA context.
     os.environ.setdefault("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
@@ -47,26 +56,33 @@ def run_rollout(
     image = _make_image(image_path)
 
     layerwise = prune_after_layer >= 0
-    architecture = (
-        "VerlLayerwisePrunedQwen2_5VLForConditionalGeneration"
-        if layerwise
-        else "VerlPrunedQwen2_5VLForConditionalGeneration"
-    )
+    architecture = "VerlPrunedQwen2_5VLForConditionalGeneration"
+    if layerwise:
+        architecture = (
+            "VerlLayerwiseFlexPrunedQwen2_5VLForConditionalGeneration"
+            if layerwise_backend == "flex"
+            else "VerlLayerwisePrunedQwen2_5VLForConditionalGeneration"
+        )
     pruning_config = VisionTokenPruningConfig(
         enabled=True,
         keep_ratio=keep_ratio,
         selector=selector,
         selector_kwargs=selector_kwargs,
         prune_after_layer=prune_after_layer,
+        layerwise_backend=layerwise_backend,
+        selector_input=selector_input,
     ).to_backend_payload()
 
-    llm = LLM(
+    llm_kwargs = dict(
         model=model_path,
         dtype="bfloat16",
         max_model_len=512,
         max_num_seqs=batch_size,
-        max_num_batched_tokens=512,
-        gpu_memory_utilization=0.5,
+        # The prompt used here is about 100 tokens after visual expansion.
+        # Scale the scheduler budget so batch-size stress tests are genuine
+        # concurrent prefills rather than silently split by a 512-token cap.
+        max_num_batched_tokens=max(512, batch_size * 128),
+        gpu_memory_utilization=gpu_memory_utilization,
         kv_cache_memory_bytes=128 * 1024 * 1024,
         enforce_eager=True,
         limit_mm_per_prompt={"image": 1, "video": 0},
@@ -80,6 +96,9 @@ def run_rollout(
             "vision_token_pruning": pruning_config,
         },
     )
+    if layerwise and layerwise_backend == "flex":
+        llm_kwargs["attention_config"] = {"backend": "FLEX_ATTENTION"}
+    llm = LLM(**llm_kwargs)
 
     from transformers import AutoProcessor
 
@@ -102,9 +121,27 @@ def run_rollout(
     merge_size = int(processor.image_processor.merge_size)
     original_visual_tokens = int(grid[0] * grid[1] * grid[2] // (merge_size**2))
 
-    results = llm.generate(
-        [{"prompt": prompt, "multi_modal_data": {"image": image}} for _ in range(batch_size)],
-        SamplingParams(max_tokens=20, temperature=0.0),
+    requests = [
+        {"prompt": prompt, "multi_modal_data": {"image": image}}
+        for _ in range(batch_size)
+    ]
+    sampling_params = SamplingParams(max_tokens=20, temperature=0.0)
+    for _ in range(warmup_runs):
+        llm.generate(requests, sampling_params)
+
+    measured_results = []
+    rollout_latencies = []
+    for _ in range(measure_runs):
+        rollout_start = time.perf_counter()
+        results = llm.generate(requests, sampling_params)
+        rollout_latencies.append(time.perf_counter() - rollout_start)
+        measured_results.append(results)
+    results = measured_results[-1]
+    rollout_seconds = sum(rollout_latencies)
+    measured_output_tokens = sum(
+        len(item.outputs[0].token_ids)
+        for run_results in measured_results
+        for item in run_results
     )
     decoded_results = []
     for request_index, request_output in enumerate(results):
@@ -134,6 +171,14 @@ def run_rollout(
         "selector": selector,
         "selector_kwargs": selector_kwargs,
         "rollout_batch_size": batch_size,
+        "layerwise_backend": layerwise_backend,
+        "selector_input": selector_input,
+        "rollout_seconds": rollout_seconds,
+        "rollout_latencies": rollout_latencies,
+        "median_rollout_seconds": statistics.median(rollout_latencies),
+        "warmup_runs": warmup_runs,
+        "measure_runs": measure_runs,
+        "output_tokens_per_second": measured_output_tokens / rollout_seconds,
     }
     (output_dir / "rollout.json").write_text(
         json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -146,6 +191,12 @@ def run_rollout(
     print(f"prune_after_layer={prune_after_layer}")
     print(f"selector={selector}")
     print(f"selector_kwargs={selector_kwargs}")
+    print(f"layerwise_backend={layerwise_backend}")
+    print(f"selector_input={selector_input}")
+    print(f"rollout_seconds={rollout_seconds:.6f}")
+    print(f"rollout_latencies={rollout_latencies}")
+    print(f"median_rollout_seconds={record['median_rollout_seconds']:.6f}")
+    print(f"output_tokens_per_second={record['output_tokens_per_second']:.6f}")
     print(f"first_kept_indices={list(selection.kept_visual_indices[:8])}")
     print(f"last_kept_index={selection.kept_visual_indices[-1]}")
     print("E2E_STAGE_ROLLOUT=PASS")
@@ -390,9 +441,18 @@ def main() -> None:
     parser.add_argument("--selector", default="random")
     parser.add_argument("--selector-kwargs", type=json.loads, default={})
     parser.add_argument("--prune-after-layer", type=int, default=-1)
+    parser.add_argument("--layerwise-backend", choices=("flex", "compact_flash"), default="flex")
+    parser.add_argument(
+        "--selector-input",
+        choices=("vision_embedding", "decoder_key"),
+        default="vision_embedding",
+    )
     parser.add_argument("--learning-rate", type=float, default=1e-5)
     parser.add_argument("--steps", type=int, default=3)
     parser.add_argument("--batch-size", type=int, default=1)
+    parser.add_argument("--gpu-memory-utilization", type=float, default=0.5)
+    parser.add_argument("--warmup-runs", type=int, default=0)
+    parser.add_argument("--measure-runs", type=int, default=1)
     args = parser.parse_args()
     if args.stage == "rollout":
         run_rollout(
@@ -403,6 +463,11 @@ def main() -> None:
             args.selector_kwargs,
             args.prune_after_layer,
             args.batch_size,
+            args.layerwise_backend,
+            args.selector_input,
+            args.gpu_memory_utilization,
+            args.warmup_runs,
+            args.measure_runs,
         )
     else:
         run_train_step(args.output_dir, args.learning_rate, args.steps)
