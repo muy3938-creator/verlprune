@@ -1,0 +1,33 @@
+{
+  "generated_text": "The first shape is red and the second shape is blue.",
+  "full_sequence_tokens": 112,
+  "student_sequence_tokens": 112,
+  "full_visual_tokens": 64,
+  "student_visual_tokens": 3,
+  "response_tokens": 13,
+  "prune_after_layer": 15,
+  "training_steps": 3,
+  "step_losses": [
+    0.046008944511413574,
+    0.04596788063645363,
+    0.04596827179193497
+  ],
+  "step_raw_jsd": [
+    0.046008944511413574,
+    0.04596788063645363,
+    0.04596827179193497
+  ],
+  "step_grad_norms": [
+    0.0537109375,
+    0.0537109375,
+    0.0537109375
+  ],
+  "loss_before": 0.046008944511413574,
+  "loss_after": 0.04597621411085129,
+  "raw_jsd_before": 0.046008944511413574,
+  "raw_jsd_after": 0.04597621411085129,
+  "grad_norm": 0.0537109375,
+  "parameter_delta_norm": 0.0261674877256155,
+  "trainable_parameters": 4194304,
+  "attention_backend": "flash_attention_2"
+}

@@ -96,3 +96,9 @@ vision_token_pruning:
 
   # -1 uses layer-0 physical pruning; N prunes attention/KV after decoder layer N
   prune_after_layer: -1
+
+  # flex is the research backend; compact_flash physically compacts static selections
+  layerwise_backend: flex
+
+  # vision_embedding, decoder_key (one static selection), or decode_query (per-token QK)
+  selector_input: vision_embedding

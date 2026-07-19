@@ -1,0 +1,54 @@
+{
+  "model_path": "/workspace/ckpts/Qwen2.5-VL-3B-Instruct",
+  "image_path": "/workspace/four-method-greedy-05/shapes.png",
+  "prompt": "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>Describe the two colored shapes from left to right in one short sentence.<|im_end|>\n<|im_start|>assistant\n",
+  "generated_token_ids": [
+    785,
+    2115,
+    6083,
+    374,
+    2518,
+    323,
+    279,
+    1290,
+    6083,
+    374,
+    6303,
+    13,
+    151645
+  ],
+  "generated_text": "The left shape is red and the right shape is blue.",
+  "selection": {
+    "version": 3,
+    "keep_ratio": 0.05,
+    "selector": "greedy_prune",
+    "selector_fingerprint": "28e25caf8d43d2d1fb932b4c1c93663798ddeda3753c4af800b3bf295dbe2cc1",
+    "original_visual_token_count": 64,
+    "kept_visual_indices": [
+      15,
+      56,
+      63
+    ]
+  },
+  "image_grid_thw": [
+    1,
+    16,
+    16
+  ],
+  "prune_after_layer": 15,
+  "selector": "greedy_prune",
+  "selector_kwargs": {
+    "similarity_threshold": 0.9
+  },
+  "rollout_batch_size": 2,
+  "layerwise_backend": "flex",
+  "selector_input": "decoder_key",
+  "rollout_seconds": 6.2378723211586475,
+  "rollout_latencies": [
+    6.2378723211586475
+  ],
+  "median_rollout_seconds": 6.2378723211586475,
+  "warmup_runs": 0,
+  "measure_runs": 1,
+  "output_tokens_per_second": 4.168087876984737
+}

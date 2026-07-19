@@ -5,6 +5,8 @@ from typing import Any
 from .config import compute_selector_fingerprint
 
 SELECTION_PROTOCOL_VERSION = 3
+DYNAMIC_SELECTION_PROTOCOL_VERSION = 1
+DYNAMIC_SELECTION_KIND = "decode_dynamic"
 
 
 def compute_keep_count(token_count: int, keep_ratio: float) -> int:
@@ -95,6 +97,112 @@ class VisionTokenSelection:
             original_visual_token_count=int(value["original_visual_token_count"]),
             kept_visual_indices=tuple(int(index) for index in value["kept_visual_indices"]),
         )
+
+
+@dataclass(frozen=True)
+class DynamicVisionTokenSelection:
+    """Per-query visual KV selections captured during autoregressive decode."""
+
+    nominal_keep_ratio: float
+    original_visual_token_count: int
+    query_kept_visual_indices: tuple[tuple[int, ...], ...]
+    selector: str = "vision_pulse"
+    selector_fingerprint: str | None = field(default=None)
+    kind: str = DYNAMIC_SELECTION_KIND
+    version: int = DYNAMIC_SELECTION_PROTOCOL_VERSION
+
+    def __post_init__(self) -> None:
+        if self.kind != DYNAMIC_SELECTION_KIND:
+            raise ValueError(f"unsupported dynamic selection kind {self.kind!r}")
+        if self.version != DYNAMIC_SELECTION_PROTOCOL_VERSION:
+            raise ValueError(
+                f"unsupported dynamic visual selection protocol version {self.version}; "
+                f"expected {DYNAMIC_SELECTION_PROTOCOL_VERSION}"
+            )
+        if not 0.0 < self.nominal_keep_ratio <= 1.0:
+            raise ValueError("dynamic selection nominal_keep_ratio must be in (0, 1]")
+        if self.original_visual_token_count <= 0:
+            raise ValueError("original_visual_token_count must be positive")
+        if not self.selector or not self.selector.strip():
+            raise ValueError("selection selector must be a non-empty name")
+        object.__setattr__(self, "selector", self.selector.strip())
+        if self.selector_fingerprint is None:
+            object.__setattr__(
+                self,
+                "selector_fingerprint",
+                compute_selector_fingerprint(self.selector, {}),
+            )
+        assert self.selector_fingerprint is not None
+        if len(self.selector_fingerprint) != 64:
+            raise ValueError("selection selector_fingerprint must be a SHA-256 hex digest")
+        try:
+            int(self.selector_fingerprint, 16)
+        except ValueError as exc:
+            raise ValueError("selection selector_fingerprint must be a SHA-256 hex digest") from exc
+
+        normalized_rows = []
+        for query_index, indices in enumerate(self.query_kept_visual_indices):
+            normalized = tuple(int(index) for index in indices)
+            if normalized and tuple(sorted(set(normalized))) != normalized:
+                raise ValueError(
+                    f"dynamic selection query {query_index} indices must be sorted and unique"
+                )
+            if normalized and (
+                normalized[0] < 0 or normalized[-1] >= self.original_visual_token_count
+            ):
+                raise ValueError(
+                    f"dynamic selection query {query_index} contains an out of range index"
+                )
+            normalized_rows.append(normalized)
+        object.__setattr__(self, "query_kept_visual_indices", tuple(normalized_rows))
+
+    def to_wire(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind,
+            "version": self.version,
+            "nominal_keep_ratio": self.nominal_keep_ratio,
+            "selector": self.selector,
+            "selector_fingerprint": self.selector_fingerprint,
+            "original_visual_token_count": self.original_visual_token_count,
+            "query_kept_visual_indices": [
+                list(indices) for indices in self.query_kept_visual_indices
+            ],
+        }
+
+    @classmethod
+    def from_wire(cls, value: dict[str, Any]) -> "DynamicVisionTokenSelection":
+        required = {
+            "kind",
+            "version",
+            "nominal_keep_ratio",
+            "selector",
+            "selector_fingerprint",
+            "original_visual_token_count",
+            "query_kept_visual_indices",
+        }
+        missing = required.difference(value)
+        if missing:
+            raise ValueError(f"dynamic visual selection is missing fields: {sorted(missing)}")
+        return cls(
+            kind=str(value["kind"]),
+            version=int(value["version"]),
+            nominal_keep_ratio=float(value["nominal_keep_ratio"]),
+            selector=str(value["selector"]),
+            selector_fingerprint=str(value["selector_fingerprint"]),
+            original_visual_token_count=int(value["original_visual_token_count"]),
+            query_kept_visual_indices=tuple(
+                tuple(int(index) for index in row)
+                for row in value["query_kept_visual_indices"]
+            ),
+        )
+
+
+def selection_from_wire(
+    value: dict[str, Any],
+) -> VisionTokenSelection | DynamicVisionTokenSelection:
+    if value.get("kind") == DYNAMIC_SELECTION_KIND:
+        return DynamicVisionTokenSelection.from_wire(value)
+    return VisionTokenSelection.from_wire(value)
 
 
 def decode_rollout_selection(

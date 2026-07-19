@@ -94,10 +94,17 @@ def build_vllm_pruning_launch_options(
         cli_args["enable_prefix_caching"] = False
     if backend is LAYERWISE_FLEX_BACKEND:
         cli_args["attention_config"] = {"backend": "FLEX_ATTENTION"}
+    capture_capacity = 1
+    if config.uses_dynamic_decode_selection:
+        capture_capacity = int(config.selector_kwargs.get("capture_capacity", 64))
+        if capture_capacity <= 0:
+            raise ValueError("dynamic visual selection capture_capacity must be positive")
     return VllmPruningLaunchOptions(
         hf_overrides={
             "architectures": [backend.architecture_for(model_type)],
-            "text_config": {"num_experts_per_tok": 1},
+            # Dense Qwen does not consume this MoE field. vLLM's temporary
+            # capture transport uses it as the per-query metadata width.
+            "text_config": {"num_experts_per_tok": capture_capacity},
             "vision_token_pruning": config.to_backend_payload(),
         },
         cli_args=cli_args,

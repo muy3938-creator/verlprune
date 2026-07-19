@@ -31,7 +31,10 @@ from torch.distributed.tensor import DTensor
 import verl.utils.torch_functional as verl_F
 from verl import DataProto
 from verl.models.vision_token_pruning.config import coerce_vision_token_pruning_config
-from verl.models.vision_token_pruning.training import prepare_actor_pruning_inputs
+from verl.models.vision_token_pruning.training import (
+    pack_dynamic_attention_mask,
+    prepare_actor_pruning_inputs,
+)
 from verl.trainer.ppo.core_algos import agg_loss, compute_self_distillation_loss, get_policy_loss_fn, kl_penalty
 from verl.utils.attention_utils import index_first_axis, pad_input, rearrange, unpad_input
 from verl.utils.device import get_device_id, get_device_name
@@ -387,6 +390,7 @@ class DataParallelPPOActor(BasePPOActor):
         )
         attention_mask = prepared_pruning_inputs.attention_mask
         layerwise_attention_mask = prepared_pruning_inputs.layerwise_attention_mask
+        dynamic_layerwise_attention_mask = prepared_pruning_inputs.dynamic_layerwise_attention_mask
         multi_modal_inputs = (
             extract_multi_modal_inputs(prepared_pruning_inputs.per_sample_multi_modal_inputs)
             if prepared_pruning_inputs.per_sample_multi_modal_inputs
@@ -418,6 +422,16 @@ class DataParallelPPOActor(BasePPOActor):
                         rearrange(layerwise_attention_mask.unsqueeze(-1), "b s ... -> (b s) ..."),
                         indices,
                     ).transpose(0, 1)
+                dynamic_layerwise_attention_mask_rmpad = None
+                if dynamic_layerwise_attention_mask is not None:
+                    if self.use_ulysses_sp:
+                        raise ValueError(
+                            "dynamic decode routing replay does not yet support Ulysses sequence parallelism"
+                        )
+                    dynamic_layerwise_attention_mask_rmpad = pack_dynamic_attention_mask(
+                        dynamic_layerwise_attention_mask,
+                        attention_mask,
+                    )
 
                 # unpad the position_ids to align the rotary
                 if position_ids.dim() == 3:
@@ -492,6 +506,7 @@ class DataParallelPPOActor(BasePPOActor):
                 extra_args = prepared_pruning_inputs.layerwise_forward_kwargs(
                     self.vision_token_pruning_config,
                     attention_mask=layerwise_attention_mask_rmpad,
+                    dynamic_attention_mask=dynamic_layerwise_attention_mask_rmpad,
                 )
                 if self.use_fused_kernels:
                     extra_args["temperature"] = temperature

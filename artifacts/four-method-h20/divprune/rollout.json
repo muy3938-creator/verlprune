@@ -1,0 +1,52 @@
+{
+  "model_path": "/workspace/ckpts/Qwen2.5-VL-3B-Instruct",
+  "image_path": "/workspace/four-method-divprune/shapes.png",
+  "prompt": "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>Describe the two colored shapes from left to right in one short sentence.<|im_end|>\n<|im_start|>assistant\n",
+  "generated_token_ids": [
+    785,
+    1156,
+    6083,
+    374,
+    2518,
+    323,
+    279,
+    2086,
+    6083,
+    374,
+    6303,
+    13,
+    151645
+  ],
+  "generated_text": "The first shape is red and the second shape is blue.",
+  "selection": {
+    "version": 3,
+    "keep_ratio": 0.05,
+    "selector": "divprune",
+    "selector_fingerprint": "07a4c337f7663f9e04f64fda984ab023652bf8771582803b703b708ce7f5b78c",
+    "original_visual_token_count": 64,
+    "kept_visual_indices": [
+      1,
+      59,
+      63
+    ]
+  },
+  "image_grid_thw": [
+    1,
+    16,
+    16
+  ],
+  "prune_after_layer": 15,
+  "selector": "divprune",
+  "selector_kwargs": {},
+  "rollout_batch_size": 2,
+  "layerwise_backend": "flex",
+  "selector_input": "decoder_key",
+  "rollout_seconds": 5.64910738542676,
+  "rollout_latencies": [
+    5.64910738542676
+  ],
+  "median_rollout_seconds": 5.64910738542676,
+  "warmup_runs": 0,
+  "measure_runs": 1,
+  "output_tokens_per_second": 4.6024970364474385
+}

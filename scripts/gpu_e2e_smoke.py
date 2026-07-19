@@ -49,7 +49,10 @@ def run_rollout(
     from vllm import LLM, SamplingParams
 
     from verl.models.vision_token_pruning.config import VisionTokenPruningConfig
-    from verl.models.vision_token_pruning.protocol import decode_rollout_selection
+    from verl.models.vision_token_pruning.transport import (
+        decode_vllm_dynamic_selection_capture,
+        decode_vllm_selection_capture,
+    )
 
     output_dir.mkdir(parents=True, exist_ok=True)
     image_path = output_dir / "shapes.png"
@@ -92,7 +95,11 @@ def run_rollout(
         enable_prefix_caching=False,
         hf_overrides={
             "architectures": [architecture],
-            "text_config": {"num_experts_per_tok": 1},
+            "text_config": {
+                "num_experts_per_tok": int(selector_kwargs.get("capture_capacity", 64))
+                if selector_input == "decode_query"
+                else 1
+            },
             "vision_token_pruning": pruning_config,
         },
     )
@@ -146,17 +153,33 @@ def run_rollout(
     decoded_results = []
     for request_index, request_output in enumerate(results):
         result = request_output.outputs[0]
-        selection = decode_rollout_selection(
-            result.routed_experts,
-            keep_ratio=keep_ratio,
-            original_visual_token_count=original_visual_tokens,
-            selector=selector,
-            selector_kwargs=selector_kwargs,
-        )
+        if selector_input == "decode_query":
+            selection = decode_vllm_dynamic_selection_capture(
+                result.routed_experts,
+                nominal_keep_ratio=keep_ratio,
+                original_visual_token_count=original_visual_tokens,
+                selector=selector,
+                selector_kwargs=selector_kwargs,
+            )
+            active_counts = [
+                len(indices)
+                for indices in selection.query_kept_visual_indices
+                if indices
+            ]
+            selection_summary = f"dynamic_counts={active_counts}"
+        else:
+            selection = decode_vllm_selection_capture(
+                result.routed_experts,
+                keep_ratio=keep_ratio,
+                original_visual_token_count=original_visual_tokens,
+                selector=selector,
+                selector_kwargs=selector_kwargs,
+            )
+            selection_summary = f"visual_tokens={original_visual_tokens}->{len(selection.kept_visual_indices)}"
         decoded_results.append((result, selection))
         print(
             f"request={request_index} generated_tokens={len(result.token_ids)} "
-            f"visual_tokens={original_visual_tokens}->{len(selection.kept_visual_indices)}"
+            f"{selection_summary}"
         )
     result, selection = decoded_results[0]
     record = {
@@ -187,7 +210,13 @@ def run_rollout(
     print(f"rollout_text={result.text!r}")
     print(f"image_grid_thw={grid}")
     print(f"generated_tokens={len(result.token_ids)}")
-    print(f"visual_tokens={original_visual_tokens}->{len(selection.kept_visual_indices)}")
+    if selector_input == "decode_query":
+        active_rows = [indices for indices in selection.query_kept_visual_indices if indices]
+        print(f"dynamic_query_count={len(active_rows)}")
+        print(f"dynamic_keep_counts={[len(indices) for indices in active_rows]}")
+        print(f"first_dynamic_indices={list(active_rows[0]) if active_rows else []}")
+    else:
+        print(f"visual_tokens={original_visual_tokens}->{len(selection.kept_visual_indices)}")
     print(f"prune_after_layer={prune_after_layer}")
     print(f"selector={selector}")
     print(f"selector_kwargs={selector_kwargs}")
@@ -197,8 +226,9 @@ def run_rollout(
     print(f"rollout_latencies={rollout_latencies}")
     print(f"median_rollout_seconds={record['median_rollout_seconds']:.6f}")
     print(f"output_tokens_per_second={record['output_tokens_per_second']:.6f}")
-    print(f"first_kept_indices={list(selection.kept_visual_indices[:8])}")
-    print(f"last_kept_index={selection.kept_visual_indices[-1]}")
+    if selector_input != "decode_query":
+        print(f"first_kept_indices={list(selection.kept_visual_indices[:8])}")
+        print(f"last_kept_index={selection.kept_visual_indices[-1]}")
     print("E2E_STAGE_ROLLOUT=PASS")
 
 
@@ -245,12 +275,17 @@ def run_train_step(output_dir: Path, learning_rate: float, steps: int) -> None:
 
     from verl.models.transformers.monkey_patch import apply_monkey_patch
     from verl.models.transformers.qwen2_vl import get_rope_index
-    from verl.models.vision_token_pruning.protocol import VisionTokenSelection
+    from verl.models.vision_token_pruning.protocol import (
+        DynamicVisionTokenSelection,
+        VisionTokenSelection,
+        selection_from_wire,
+    )
     from verl.models.vision_token_pruning.runtime import (
         KEEP_MASK_KEY,
         attach_selection_to_multi_modal_inputs,
         replay_rollout_selection_on_attention_mask,
     )
+    from verl.models.vision_token_pruning.training import replay_dynamic_rollout_selection
 
     record = json.loads((output_dir / "rollout.json").read_text(encoding="utf-8"))
     prune_after_layer = int(record.get("prune_after_layer", -1))
@@ -266,18 +301,33 @@ def run_train_step(output_dir: Path, learning_rate: float, steps: int) -> None:
     full_input_ids = torch.cat((prompt_ids, response_ids), dim=1)
     full_attention_mask = torch.ones_like(full_input_ids)
 
-    selection = VisionTokenSelection.from_wire(record["selection"])
+    selection = selection_from_wire(record["selection"])
     multimodal_inputs = attach_selection_to_multi_modal_inputs({}, selection.to_wire())
     image_token_id = processor.tokenizer.convert_tokens_to_ids("<|image_pad|>")
-    student_attention_mask = replay_rollout_selection_on_attention_mask(
-        full_input_ids,
-        full_attention_mask,
-        [multimodal_inputs],
-        image_token_id=image_token_id,
-        expected_keep_ratio=selection.keep_ratio,
-        expected_selector=selection.selector,
-        expected_selector_kwargs=record.get("selector_kwargs", {}),
-    )
+    dynamic = isinstance(selection, DynamicVisionTokenSelection)
+    if dynamic:
+        dynamic_attention_mask = replay_dynamic_rollout_selection(
+            full_input_ids,
+            full_attention_mask,
+            [multimodal_inputs],
+            image_token_id=image_token_id,
+            expected_keep_ratio=selection.nominal_keep_ratio,
+            expected_selector=selection.selector,
+            expected_selector_kwargs=record.get("selector_kwargs", {}),
+        )
+        student_attention_mask = full_attention_mask
+    else:
+        assert isinstance(selection, VisionTokenSelection)
+        dynamic_attention_mask = None
+        student_attention_mask = replay_rollout_selection_on_attention_mask(
+            full_input_ids,
+            full_attention_mask,
+            [multimodal_inputs],
+            image_token_id=image_token_id,
+            expected_keep_ratio=selection.keep_ratio,
+            expected_selector=selection.selector,
+            expected_selector_kwargs=record.get("selector_kwargs", {}),
+        )
     compact_keep = student_attention_mask[0].bool()
     student_input_ids = full_input_ids if layerwise else full_input_ids[:, compact_keep]
 
@@ -319,8 +369,12 @@ def run_train_step(output_dir: Path, learning_rate: float, steps: int) -> None:
     image_grid_thw = prompt_inputs["image_grid_thw"].cuda()
     teacher_position_ids = teacher_position_ids.cuda()
     student_position_ids = student_position_ids.cuda()
-    keep_mask = multimodal_inputs[KEEP_MASK_KEY].cuda()
+    keep_mask = multimodal_inputs.get(KEEP_MASK_KEY)
+    if keep_mask is not None:
+        keep_mask = keep_mask.cuda()
     layerwise_attention_mask = student_attention_mask.cuda()
+    if dynamic_attention_mask is not None:
+        dynamic_attention_mask = dynamic_attention_mask.cuda()
 
     response_length = response_ids.shape[1]
     teacher_prompt_length = prompt_ids.shape[1]
@@ -347,14 +401,18 @@ def run_train_step(output_dir: Path, learning_rate: float, steps: int) -> None:
     step_raw_jsd = []
     step_grad_norms = []
     metrics_before = None
-    student_kwargs = (
-        {
+    if dynamic:
+        student_kwargs = {
+            "vision_token_dynamic_attention_mask": dynamic_attention_mask,
+            "vision_token_prune_after_layer": prune_after_layer,
+        }
+    elif layerwise:
+        student_kwargs = {
             "vision_token_pruning_mask": layerwise_attention_mask,
             "vision_token_prune_after_layer": prune_after_layer,
         }
-        if layerwise
-        else {"vision_token_keep_mask": keep_mask}
-    )
+    else:
+        student_kwargs = {"vision_token_keep_mask": keep_mask}
     for _ in range(steps):
         optimizer.zero_grad(set_to_none=True)
         student_output = model(
@@ -401,7 +459,11 @@ def run_train_step(output_dir: Path, learning_rate: float, steps: int) -> None:
         "full_sequence_tokens": int(full_input_ids.shape[1]),
         "student_sequence_tokens": int(student_input_ids.shape[1]),
         "full_visual_tokens": selection.original_visual_token_count,
-        "student_visual_tokens": len(selection.kept_visual_indices),
+        "student_visual_tokens": (
+            [len(indices) for indices in selection.query_kept_visual_indices if indices]
+            if dynamic
+            else len(selection.kept_visual_indices)
+        ),
         "response_tokens": response_length,
         "prune_after_layer": prune_after_layer,
         "training_steps": steps,
@@ -444,7 +506,7 @@ def main() -> None:
     parser.add_argument("--layerwise-backend", choices=("flex", "compact_flash"), default="flex")
     parser.add_argument(
         "--selector-input",
-        choices=("vision_embedding", "decoder_key"),
+        choices=("vision_embedding", "decoder_key", "decode_query"),
         default="vision_embedding",
     )
     parser.add_argument("--learning-rate", type=float, default=1e-5)

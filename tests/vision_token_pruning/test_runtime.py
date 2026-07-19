@@ -6,7 +6,10 @@ from verl.models.vision_token_pruning.config import (  # noqa: E402
     VisionTokenPruningConfig,
     compute_selector_fingerprint,
 )
-from verl.models.vision_token_pruning.protocol import VisionTokenSelection  # noqa: E402
+from verl.models.vision_token_pruning.protocol import (  # noqa: E402
+    DynamicVisionTokenSelection,
+    VisionTokenSelection,
+)
 from verl.models.vision_token_pruning.runtime import (  # noqa: E402
     KEEP_MASK_KEY,
     attach_selection_to_multi_modal_inputs,
@@ -16,6 +19,7 @@ from verl.models.vision_token_pruning.runtime import (  # noqa: E402
     strip_pruning_metadata,
     strip_selection_metadata,
 )
+from verl.models.vision_token_pruning.training import pack_dynamic_attention_mask  # noqa: E402
 
 
 def test_rollout_selection_physically_compacts_actor_tokens_and_features():
@@ -188,3 +192,55 @@ def test_explicit_none_suppresses_prepared_layerwise_mask():
         VisionTokenPruningConfig(enabled=True, keep_ratio=0.5, prune_after_layer=3),
         attention_mask=None,
     ) == {}
+
+
+def test_dynamic_decode_routes_are_replayed_per_query_and_pack_block_diagonally():
+    options = {"budget_mode": "fixed", "temperature": 0.1, "capture_capacity": 8}
+    selections = [
+        DynamicVisionTokenSelection(
+            nominal_keep_ratio=0.5,
+            original_visual_token_count=3,
+            query_kept_visual_indices=((), (), (), (), (0, 2), (1,)),
+            selector_fingerprint=compute_selector_fingerprint("vision_pulse", options),
+        ),
+        DynamicVisionTokenSelection(
+            nominal_keep_ratio=0.5,
+            original_visual_token_count=2,
+            query_kept_visual_indices=((), (), (), (1,), (0,)),
+            selector_fingerprint=compute_selector_fingerprint("vision_pulse", options),
+        ),
+    ]
+    inputs = [attach_selection_to_multi_modal_inputs({}, item.to_wire()) for item in selections]
+    input_ids = torch.tensor([[7, 99, 99, 99, 8, 10], [0, 7, 99, 99, 8, 10]])
+    attention_mask = torch.tensor([[1, 1, 1, 1, 1, 1], [0, 1, 1, 1, 1, 1]])
+    config = VisionTokenPruningConfig(
+        enabled=True,
+        keep_ratio=0.5,
+        prune_after_layer=3,
+        selector="vision_pulse",
+        selector_input="decode_query",
+        selector_kwargs=options,
+    )
+
+    prepared = prepare_actor_pruning_inputs(
+        input_ids=input_ids,
+        attention_mask=attention_mask,
+        per_sample_multi_modal_inputs=inputs,
+        image_token_id=99,
+        config=config,
+        apply_pruning=True,
+    )
+
+    dynamic = prepared.dynamic_layerwise_attention_mask
+    assert dynamic is not None
+    assert dynamic[0, 4, 1:4].tolist() == [True, False, True]
+    assert dynamic[0, 5, 1:4].tolist() == [False, True, False]
+    assert dynamic[1, 4, 2:4].tolist() == [False, True]
+    assert KEEP_MASK_KEY not in prepared.per_sample_multi_modal_inputs[0]
+
+    packed = pack_dynamic_attention_mask(dynamic, attention_mask)
+    assert packed.shape == (1, 11, 11)
+    assert not bool(packed[0, :6, 6:].any())
+    assert not bool(packed[0, 6:, :6].any())
+    kwargs = prepared.layerwise_forward_kwargs(config)
+    assert kwargs["vision_token_dynamic_attention_mask"] is dynamic

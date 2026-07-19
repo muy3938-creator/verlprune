@@ -1,5 +1,11 @@
 # Vision-OPD layerwise FlexAttention implementation and H20 results
 
+This document describes the original request-static prefill selection.  The
+new per-decode-query VisionPulse path, training replay, and H20 results are in
+[`dynamic-decode-visionpulse-flex.md`](dynamic-decode-visionpulse-flex.md).
+The DART, DivPrune, GreedyPrune, and VisionPulse selector comparison is in
+[`four-method-flex-pruning.md`](four-method-flex-pruning.md).
+
 ## Decision
 
 FlexAttention is viable as a **research/debug backend** for the requested
@@ -17,7 +23,7 @@ The branch therefore keeps three explicit modes:
 - `layerwise_compact_flash`: the existing compact implementation retained as
   the performance/reference backend.
 
-## Implemented semantics
+## Static-mode implemented semantics
 
 With `prune_after_layer=15`:
 

@@ -14,6 +14,10 @@ _RESERVED_SELECTOR_KWARGS = {
     "query_states",
     "key_states",
     "value_states",
+    "context_query_states",
+    "context_key_states",
+    "context_value_states",
+    "visual_context_mask",
     "layer_index",
 }
 
@@ -60,6 +64,10 @@ class VisionTokenPruningConfig:
     selector_kwargs: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        if not self.selector or not self.selector.strip():
+            raise ValueError("vision token pruning selector must be a non-empty name")
+        self.selector = self.selector.strip()
+        self.selector_kwargs = dict(self.selector_kwargs)
         if not 0.0 < self.keep_ratio <= 1.0:
             raise ValueError(f"vision token pruning keep_ratio must be in (0, 1], got {self.keep_ratio}")
         if self.enabled and self.keep_ratio == 1.0:
@@ -68,21 +76,94 @@ class VisionTokenPruningConfig:
             raise ValueError("vision token pruning prune_after_layer must be >= -1")
         if self.layerwise_backend not in {"flex", "compact_flash"}:
             raise ValueError("vision token pruning layerwise_backend must be 'flex' or 'compact_flash'")
-        if self.selector_input not in {"vision_embedding", "decoder_key"}:
+        if self.selector_input not in {"vision_embedding", "decoder_key", "decode_query"}:
             raise ValueError(
-                "vision token pruning selector_input must be 'vision_embedding' or 'decoder_key'"
+                "vision token pruning selector_input must be 'vision_embedding', "
+                "'decoder_key', or 'decode_query'"
             )
-        if self.selector_input == "decoder_key" and self.prune_after_layer < 0:
-            raise ValueError("decoder_key selection requires prune_after_layer >= 0")
-        if not self.selector or not self.selector.strip():
-            raise ValueError("vision token pruning selector must be a non-empty name")
-        self.selector = self.selector.strip()
-        self.selector_kwargs = dict(self.selector_kwargs)
+        if self.selector_input in {"decoder_key", "decode_query"} and self.prune_after_layer < 0:
+            raise ValueError(f"{self.selector_input} selection requires prune_after_layer >= 0")
+        if self.selector_input == "decoder_key" and self.layerwise_backend != "flex":
+            raise ValueError("decoder_key selection requires layerwise_backend='flex'")
+        if self.selector_input == "decode_query" and self.layerwise_backend != "flex":
+            raise ValueError("decode_query selection requires layerwise_backend='flex'")
+        if self.selector_input == "decode_query" and self.selector != "vision_pulse":
+            raise ValueError("decode_query selection currently requires selector='vision_pulse'")
+        if self.selector == "vision_pulse" and self.selector_input != "decode_query":
+            raise ValueError("selector='vision_pulse' requires selector_input='decode_query'")
+        if self.selector in {"dart", "greedy_prune"} and self.selector_input != "decoder_key":
+            raise ValueError(
+                f"selector={self.selector!r} requires selector_input='decoder_key'"
+            )
+        if self.selector_input == "decode_query":
+            allowed_dynamic_options = {
+                "budget_mode",
+                "temperature",
+                "min_keep_ratio",
+                "max_keep_ratio",
+                "capture_capacity",
+            }
+            unknown = set(self.selector_kwargs).difference(allowed_dynamic_options)
+            if unknown:
+                raise ValueError(
+                    "unsupported vision_pulse selector_kwargs: "
+                    f"{sorted(unknown)}"
+                )
+            budget_mode = str(self.selector_kwargs.get("budget_mode", "visual_mass"))
+            if budget_mode not in {"fixed", "visual_mass"}:
+                raise ValueError(
+                    "vision_pulse budget_mode must be 'fixed' or 'visual_mass'"
+                )
+            temperature = float(self.selector_kwargs.get("temperature", 0.1))
+            if temperature <= 0:
+                raise ValueError("vision_pulse temperature must be positive")
+            minimum = float(self.selector_kwargs.get("min_keep_ratio", 0.0))
+            maximum = float(self.selector_kwargs.get("max_keep_ratio", 1.0))
+            if not 0.0 <= minimum <= maximum <= 1.0:
+                raise ValueError(
+                    "vision_pulse keep-ratio clamps must satisfy 0 <= min <= max <= 1"
+                )
+            capture_capacity = int(self.selector_kwargs.get("capture_capacity", 64))
+            if capture_capacity <= 0:
+                raise ValueError("vision_pulse capture_capacity must be positive")
+        elif self.selector == "dart":
+            allowed_dart_options = {"pivot_image_tokens", "pivot_text_tokens"}
+            unknown = set(self.selector_kwargs).difference(allowed_dart_options)
+            if unknown:
+                raise ValueError(f"unsupported dart selector_kwargs: {sorted(unknown)}")
+            image_pivots = self.selector_kwargs.get("pivot_image_tokens", 4)
+            text_pivots = self.selector_kwargs.get("pivot_text_tokens", 4)
+            if (
+                not isinstance(image_pivots, int)
+                or isinstance(image_pivots, bool)
+                or image_pivots <= 0
+                or not isinstance(text_pivots, int)
+                or isinstance(text_pivots, bool)
+                or text_pivots < 0
+            ):
+                raise ValueError("dart pivot counts must satisfy image > 0 and text >= 0")
+        elif self.selector == "greedy_prune":
+            unknown = set(self.selector_kwargs).difference({"similarity_threshold"})
+            if unknown:
+                raise ValueError(
+                    f"unsupported greedy_prune selector_kwargs: {sorted(unknown)}"
+                )
+            threshold = float(self.selector_kwargs.get("similarity_threshold", 0.9))
+            if not -1.0 <= threshold <= 1.0:
+                raise ValueError("greedy_prune similarity_threshold must be in [-1, 1]")
+        elif self.selector == "divprune" and self.selector_kwargs:
+            raise ValueError(
+                f"unsupported divprune selector_kwargs: {sorted(self.selector_kwargs)}"
+            )
         compute_selector_fingerprint(self.selector, self.selector_kwargs)
 
     @property
     def uses_layerwise_backend(self) -> bool:
         return self.enabled and self.prune_after_layer >= 0
+
+    @property
+    def uses_dynamic_decode_selection(self) -> bool:
+        return self.uses_layerwise_backend and self.selector_input == "decode_query"
 
     @property
     def backend_name(self) -> str:

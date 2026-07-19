@@ -1,0 +1,112 @@
+{
+  "all_greedy_tokens_match": true,
+  "max_sampled_logprob_abs_diff": 0.05217242240905762,
+  "sampled_tolerance": 0.08,
+  "comparisons": [
+    {
+      "step": 0,
+      "phase": "prefill",
+      "token_id": 785,
+      "transformers_argmax_token_id": 785,
+      "sampled_logprob_abs_diff": 0.021571680903434753,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.22842836380004883,
+      "compared_logprob_count": 20,
+      "all_logprob_abs_diff_mean": 0.09352850914001465,
+      "all_logprob_abs_diff_p99": 0.22842836380004883,
+      "all_logprob_abs_diff_max": 0.22842836380004883
+    },
+    {
+      "step": 1,
+      "phase": "decode",
+      "token_id": 2115,
+      "transformers_argmax_token_id": 2115,
+      "sampled_logprob_abs_diff": 0.05217242240905762,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.07282757759094238,
+      "compared_logprob_count": 20,
+      "all_logprob_abs_diff_mean": 0.06766366213560104,
+      "all_logprob_abs_diff_p99": 0.07282757759094238,
+      "all_logprob_abs_diff_max": 0.07282757759094238
+    },
+    {
+      "step": 2,
+      "phase": "decode",
+      "token_id": 6083,
+      "transformers_argmax_token_id": 6083,
+      "sampled_logprob_abs_diff": 0.0017251037061214447,
+      "shared_top20_tokens": 19,
+      "max_shared_top20_logprob_abs_diff": 0.1267251968383789,
+      "compared_logprob_count": 20,
+      "all_logprob_abs_diff_mean": 0.03836258128285408,
+      "all_logprob_abs_diff_p99": 0.12606962025165558,
+      "all_logprob_abs_diff_max": 0.1267251968383789
+    },
+    {
+      "step": 3,
+      "phase": "decode",
+      "token_id": 374,
+      "transformers_argmax_token_id": 374,
+      "sampled_logprob_abs_diff": 0.00019271625205874443,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.12480735778808594,
+      "compared_logprob_count": 20,
+      "all_logprob_abs_diff_mean": 0.07496147602796555,
+      "all_logprob_abs_diff_p99": 0.12480735778808594,
+      "all_logprob_abs_diff_max": 0.12480735778808594
+    },
+    {
+      "step": 4,
+      "phase": "decode",
+      "token_id": 6303,
+      "transformers_argmax_token_id": 6303,
+      "sampled_logprob_abs_diff": 0.03234982490539551,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.09265017509460449,
+      "compared_logprob_count": 20,
+      "all_logprob_abs_diff_mean": 0.05646996572613716,
+      "all_logprob_abs_diff_p99": 0.09265017509460449,
+      "all_logprob_abs_diff_max": 0.09265017509460449
+    },
+    {
+      "step": 5,
+      "phase": "decode",
+      "token_id": 11,
+      "transformers_argmax_token_id": 11,
+      "sampled_logprob_abs_diff": 0.003126859664916992,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.2468729019165039,
+      "compared_logprob_count": 20,
+      "all_logprob_abs_diff_mean": 0.08656211942434311,
+      "all_logprob_abs_diff_p99": 0.22312301397323608,
+      "all_logprob_abs_diff_max": 0.2468729019165039
+    },
+    {
+      "step": 6,
+      "phase": "decode",
+      "token_id": 323,
+      "transformers_argmax_token_id": 323,
+      "sampled_logprob_abs_diff": 0.013813801109790802,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.23618602752685547,
+      "compared_logprob_count": 20,
+      "all_logprob_abs_diff_mean": 0.11184301227331161,
+      "all_logprob_abs_diff_p99": 0.23618602752685547,
+      "all_logprob_abs_diff_max": 0.23618602752685547
+    },
+    {
+      "step": 7,
+      "phase": "decode",
+      "token_id": 279,
+      "transformers_argmax_token_id": 279,
+      "sampled_logprob_abs_diff": 0.0008051763288676739,
+      "shared_top20_tokens": 19,
+      "max_shared_top20_logprob_abs_diff": 0.3741950988769531,
+      "compared_logprob_count": 20,
+      "all_logprob_abs_diff_mean": 0.24302558600902557,
+      "all_logprob_abs_diff_p99": 0.3741950988769531,
+      "all_logprob_abs_diff_max": 0.3741950988769531
+    }
+  ],
+  "within_tolerance": true
+}

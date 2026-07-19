@@ -3,9 +3,11 @@
 The integration deliberately leaves vLLM's paged KV layout untouched.  A
 boolean sidecar is indexed by the physical slots that vLLM already assigns;
 FlexAttention consults it from a score modifier after the configured layer.
-Selection can happen either in the vision tower or once from decoder Q/K/V at
-the layer boundary.  Later prefill layers and every decode step reuse the same
-per-layer sidecar.
+Selection can happen in the vision tower, once from decoder Q/K/V at the layer
+boundary, or independently for every decode query using VisionPulse-style QK
+attention. Static modes reuse a persistent physical-slot sidecar. Dynamic
+decode mode keeps the complete cache and installs a query-dependent mask only
+for the current scheduled step.
 """
 
 from __future__ import annotations
@@ -34,6 +36,7 @@ from vllm.v1.attention.backends.flex_attention import (
 )
 from vllm.v1.attention.backends.registry import AttentionBackendEnum, register_backend
 
+from verl.models.vision_token_pruning.dynamic import select_dynamic_visual_kv
 from verl.models.vision_token_pruning.strategy import VisionTokenSelectionEngine
 from verl.models.vision_token_pruning.transport import (
     decode_embedding_selection_metadata,
@@ -55,6 +58,9 @@ class LayerwiseFlexPruningPlan:
     query_keep_mask: torch.Tensor | None
     selection_engine: VisionTokenSelectionEngine
     capture_values: torch.Tensor | None = None
+    dynamic_request_slot_keep: torch.Tensor | None = None
+    dynamic_request_by_query: torch.Tensor | None = None
+    dynamic_query_active: torch.Tensor | None = None
 
     def __post_init__(self) -> None:
         if self.prune_after_layer < 0:
@@ -68,6 +74,10 @@ class LayerwiseFlexPruningPlan:
             self.query_keep_mask.ndim != 1 or self.query_keep_mask.dtype != torch.bool
         ):
             raise ValueError("query_keep_mask must be a rank-1 bool tensor")
+
+    @property
+    def uses_dynamic_decode_selection(self) -> bool:
+        return self.selector_input == "decode_query"
 
 
 def layer_index_from_name(layer_name: str) -> int:
@@ -119,6 +129,10 @@ def _select_from_decoder_states(
             query_states=query[:actual_tokens].index_select(0, image_positions),
             key_states=key[:actual_tokens].index_select(0, image_positions),
             value_states=value[:actual_tokens].index_select(0, image_positions),
+            context_query_states=query[start:end],
+            context_key_states=key[start:end],
+            context_value_states=value[start:end],
+            visual_context_mask=candidate_ids[start:end] > 0,
             layer_index=layer_index,
         )
         selected_positions = image_positions.index_select(0, selected_relative)
@@ -135,12 +149,148 @@ def _select_from_decoder_states(
         capturer.capture(0, capture)
 
 
+def _request_physical_slots(
+    metadata: FlexAttentionMetadata,
+    request_index: int,
+) -> torch.Tensor:
+    """Return one request's live paged-cache slots in logical token order."""
+
+    sequence_length = int(metadata.seq_lens[request_index].item())
+    logical = torch.arange(sequence_length, device=metadata.block_table.device)
+    logical_blocks = logical // metadata.block_size
+    offsets = logical % metadata.block_size
+    physical_blocks = metadata.block_table[request_index].long().index_select(0, logical_blocks)
+    slots = physical_blocks * metadata.block_size + offsets
+    valid = (physical_blocks >= 0) & (slots >= 0) & (slots < metadata.total_cache_tokens)
+    if not bool(valid.all()):
+        raise ValueError("dynamic visual KV selection found an invalid live cache block")
+    return slots
+
+
 class LayerwisePrunedFlexAttentionImpl(FlexAttentionImpl):
     """Native paged FlexAttention with a persistent physical-slot keep mask."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._physical_slot_keep: torch.Tensor | None = None
+        self._anchor_key_sidecar: torch.Tensor | None = None
+        self._anchor_visual_sidecar: torch.Tensor | None = None
+
+    def _anchor_sidecars(
+        self,
+        metadata: FlexAttentionMetadata,
+        key: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        expected_key_shape = (metadata.total_cache_tokens, *key.shape[1:])
+        key_sidecar = self._anchor_key_sidecar
+        visual_sidecar = self._anchor_visual_sidecar
+        if (
+            key_sidecar is None
+            or key_sidecar.device != key.device
+            or tuple(key_sidecar.shape) != expected_key_shape
+            or key_sidecar.dtype != key.dtype
+        ):
+            key_sidecar = torch.zeros(expected_key_shape, dtype=key.dtype, device=key.device)
+            visual_sidecar = torch.zeros(
+                metadata.total_cache_tokens,
+                dtype=torch.bool,
+                device=key.device,
+            )
+            self._anchor_key_sidecar = key_sidecar
+            self._anchor_visual_sidecar = visual_sidecar
+        assert visual_sidecar is not None
+        return key_sidecar, visual_sidecar
+
+    def _select_dynamic_decode_queries(
+        self,
+        plan: LayerwiseFlexPruningPlan,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        metadata: FlexAttentionMetadata,
+    ) -> None:
+        """Build a different visual-KV mask for every current decode query."""
+
+        actual_tokens = metadata.num_actual_tokens
+        slots, valid_slots = self._scheduled_slots(metadata)
+        key_sidecar, visual_sidecar = self._anchor_sidecars(metadata, key)
+        key_sidecar[slots[valid_slots]] = key[:actual_tokens][valid_slots]
+        candidate_ids = plan.candidate_ids[:actual_tokens].to(visual_sidecar.device)
+        visual_sidecar[slots[valid_slots]] = candidate_ids[valid_slots] > 0
+
+        request_count = len(metadata.query_start_loc) - 1
+        request_slot_keep = torch.ones(
+            (request_count, metadata.total_cache_tokens),
+            dtype=torch.bool,
+            device=key.device,
+        )
+        request_by_query = torch.repeat_interleave(
+            torch.arange(request_count, device=key.device),
+            _query_lengths(metadata).to(key.device),
+        )
+        query_active = torch.zeros(actual_tokens, dtype=torch.bool, device=key.device)
+
+        options = plan.selection_engine.config.selector_kwargs
+        temperature = float(options.get("temperature", 0.1))
+        budget_mode = str(options.get("budget_mode", "visual_mass"))
+        min_keep_ratio = float(options.get("min_keep_ratio", 0.0))
+        max_keep_ratio = float(options.get("max_keep_ratio", 1.0))
+        capture_capacity = int(options.get("capture_capacity", 64))
+        capture = torch.zeros(
+            (actual_tokens, capture_capacity),
+            dtype=torch.int32,
+            device=key.device,
+        )
+
+        for request_index in range(request_count):
+            start = int(metadata.query_start_loc[request_index].item())
+            end = int(metadata.query_start_loc[request_index + 1].item())
+            if end <= start:
+                continue
+            # Normal decode has one scheduled query. During prefill only the
+            # final prompt query predicts the first generated token.
+            query_index = end - 1
+            context_slots = _request_physical_slots(metadata, request_index)
+            context_visual = visual_sidecar.index_select(0, context_slots)
+            if not bool(context_visual.any()):
+                continue
+            query_heads = query[query_index].reshape(-1, self.head_size)
+            context_key_heads = key_sidecar.index_select(0, context_slots).reshape(
+                len(context_slots),
+                -1,
+                self.head_size,
+            )
+            result = select_dynamic_visual_kv(
+                query_heads,
+                context_key_heads,
+                context_visual,
+                softmax_scale=self.scale,
+                temperature=temperature,
+                budget_mode=budget_mode,
+                fixed_keep_ratio=plan.selection_engine.config.keep_ratio,
+                min_keep_ratio=min_keep_ratio,
+                max_keep_ratio=max_keep_ratio,
+            )
+            if result.keep_count > capture_capacity:
+                raise ValueError(
+                    f"dynamic selection kept {result.keep_count} visual tokens, exceeding "
+                    f"capture_capacity={capture_capacity}"
+                )
+            visual_slots = context_slots[context_visual]
+            selected_slots = visual_slots.index_select(0, result.kept_visual_indices)
+            request_slot_keep[request_index, visual_slots] = False
+            request_slot_keep[request_index, selected_slots] = True
+            query_active[query_index] = True
+            capture[query_index, : result.keep_count] = (
+                result.kept_visual_indices.to(torch.int32) + 1
+            )
+
+        plan.dynamic_request_slot_keep = request_slot_keep
+        plan.dynamic_request_by_query = request_by_query
+        plan.dynamic_query_active = query_active
+        plan.capture_values = capture
+        capturer = RoutedExpertsCapturer.get_instance()
+        if capturer is not None:
+            capturer.capture(0, capture)
 
     def _slot_sidecar(self, metadata: FlexAttentionMetadata) -> torch.Tensor:
         sidecar = self._physical_slot_keep
@@ -190,17 +340,59 @@ class LayerwisePrunedFlexAttentionImpl(FlexAttentionImpl):
             )
 
         plan, layer_index = active
-        if plan.selector_input == "decoder_key" and layer_index == plan.prune_after_layer:
-            _select_from_decoder_states(
-                plan,
+        if layer_index == plan.prune_after_layer:
+            if plan.selector_input == "decoder_key":
+                _select_from_decoder_states(
+                    plan,
+                    query,
+                    key,
+                    value,
+                    attn_metadata,
+                    layer_index=layer_index,
+                )
+            elif plan.uses_dynamic_decode_selection:
+                self._select_dynamic_decode_queries(
+                    plan,
+                    query,
+                    key,
+                    attn_metadata,
+                )
+
+        if layer_index <= plan.prune_after_layer:
+            return super().forward(
+                layer,
                 query,
                 key,
                 value,
+                kv_cache,
                 attn_metadata,
-                layer_index=layer_index,
+                output,
+                output_scale,
+                output_block_scale,
             )
 
-        if layer_index <= plan.prune_after_layer:
+        if plan.uses_dynamic_decode_selection:
+            request_slot_keep = plan.dynamic_request_slot_keep
+            request_by_query = plan.dynamic_request_by_query
+            query_active = plan.dynamic_query_active
+            if request_slot_keep is None or request_by_query is None or query_active is None:
+                raise RuntimeError("anchor layer did not produce dynamic visual KV routing")
+            base_score_mod = attn_metadata.get_transformed_score_mod()
+
+            def dynamic_query_score_mod(score, batch, head, query_index, physical_kv_index):
+                if base_score_mod is not None:
+                    score = base_score_mod(
+                        score,
+                        batch,
+                        head,
+                        query_index,
+                        physical_kv_index,
+                    )
+                request_index = request_by_query[query_index]
+                keep = request_slot_keep[request_index, physical_kv_index]
+                return torch.where(query_active[query_index] & ~keep, -float("inf"), score)
+
+            attn_metadata.transformed_score_mod = dynamic_query_score_mod
             return super().forward(
                 layer,
                 query,
@@ -389,7 +581,7 @@ class _LayerwiseFlexPruningMixin:
         merge_size = self.visual.spatial_merge_size
         output = []
         for embeddings, grid_thw in zip(image_embeds_split, image_grid_thw.tolist(), strict=True):
-            if self._pruning_config.selector_input == "decoder_key":
+            if self._pruning_config.selector_input in {"decoder_key", "decode_query"}:
                 indices = torch.arange(len(embeddings), device=embeddings.device)
             else:
                 indices = self._selection_engine.select(embeddings, grid_thw=grid_thw)

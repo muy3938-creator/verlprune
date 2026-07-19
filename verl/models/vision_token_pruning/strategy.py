@@ -27,6 +27,10 @@ class VisionTokenSelectionRequest:
     query_states: torch.Tensor | None = None
     key_states: torch.Tensor | None = None
     value_states: torch.Tensor | None = None
+    context_query_states: torch.Tensor | None = None
+    context_key_states: torch.Tensor | None = None
+    context_value_states: torch.Tensor | None = None
+    visual_context_mask: torch.Tensor | None = None
     layer_index: int | None = None
     options: Mapping[str, Any] = field(default_factory=dict)
 
@@ -71,6 +75,196 @@ def _key_norm_strategy(request: VisionTokenSelectionRequest) -> torch.Tensor:
     scores = request.key_states[:-1].float().square().sum(dim=tuple(range(1, request.key_states.ndim)))
     selected = scores.topk(request.keep_count - 1, sorted=False).indices
     return torch.cat((selected, selected.new_tensor([request.token_count - 1]))).sort().values
+
+
+def _flat_float(features: torch.Tensor | None, *, name: str) -> torch.Tensor:
+    if features is None:
+        raise ValueError(f"{name} requires decoder states")
+    if features.ndim < 2:
+        raise ValueError(f"{name} decoder states must have a token dimension")
+    return features.float().reshape(len(features), -1)
+
+
+def _decoder_text_features(
+    request: VisionTokenSelectionRequest,
+    *,
+    source: str,
+    strategy_name: str,
+) -> torch.Tensor:
+    context = getattr(request, f"context_{source}_states")
+    visual_mask = request.visual_context_mask
+    features = _flat_float(context, name=strategy_name)
+    if visual_mask is None or visual_mask.ndim != 1 or len(visual_mask) != len(features):
+        raise ValueError(f"{strategy_name} requires a full-context visual mask")
+    visual_positions = visual_mask.nonzero(as_tuple=False).flatten()
+    if not len(visual_positions):
+        raise ValueError(f"{strategy_name} requires visual tokens")
+    positions = torch.arange(len(features), device=features.device)
+    text_after_image = (~visual_mask) & (positions > visual_positions[-1])
+    text = features[text_after_image]
+    if not len(text):
+        text = features[~visual_mask]
+    if not len(text):
+        raise ValueError(f"{strategy_name} requires at least one text token")
+    return text
+
+
+def _divprune_strategy(request: VisionTokenSelectionRequest) -> torch.Tensor:
+    """Clean-room max-min diversity selection based on the DivPrune paper."""
+
+    if request.keep_count == request.token_count:
+        return torch.arange(request.token_count, device=request.device)
+    if request.keep_count == 1:
+        return torch.tensor([request.token_count - 1], device=request.device)
+    source = request.value_states if request.value_states is not None else request.features
+    features = _flat_float(source, name="divprune")
+    candidates = torch.nn.functional.normalize(features[:-1], dim=-1)
+    target = request.keep_count - 1
+    if target == len(candidates):
+        selected = torch.arange(target, device=request.device)
+    else:
+        distances = 1.0 - candidates @ candidates.T
+        if len(candidates) == 1:
+            selected = torch.zeros(1, dtype=torch.long, device=request.device)
+        else:
+            nearest_other = distances.topk(2, dim=0, largest=False).values[1]
+            first = nearest_other.argmax()
+            chosen = [first]
+            chosen_mask = torch.zeros(len(candidates), dtype=torch.bool, device=request.device)
+            chosen_mask[first] = True
+            while len(chosen) < target:
+                minimum_distance = distances.index_select(0, torch.stack(chosen)).min(dim=0).values
+                minimum_distance.masked_fill_(chosen_mask, -float("inf"))
+                next_index = minimum_distance.argmax()
+                chosen.append(next_index)
+                chosen_mask[next_index] = True
+            selected = torch.stack(chosen)
+    anchor = selected.new_tensor([request.token_count - 1])
+    return torch.cat((selected, anchor)).sort().values
+
+
+def _dart_strategy(request: VisionTokenSelectionRequest) -> torch.Tensor:
+    """DART-style duplication removal adapted to an exact fixed budget."""
+
+    if request.keep_count == request.token_count:
+        return torch.arange(request.token_count, device=request.device)
+    anchor = torch.tensor([request.token_count - 1], device=request.device)
+    if request.keep_count == 1:
+        return anchor
+
+    visual_keys = _flat_float(request.key_states, name="dart")
+    visual_values = torch.nn.functional.normalize(
+        _flat_float(request.value_states, name="dart"),
+        dim=-1,
+    )
+    text_keys = _decoder_text_features(
+        request,
+        source="key",
+        strategy_name="dart",
+    )
+    text_values = torch.nn.functional.normalize(
+        _decoder_text_features(
+            request,
+            source="value",
+            strategy_name="dart",
+        ),
+        dim=-1,
+    )
+
+    requested_image_pivots = int(request.options.get("pivot_image_tokens", 4))
+    requested_text_pivots = int(request.options.get("pivot_text_tokens", 4))
+    if requested_image_pivots <= 0 or requested_text_pivots < 0:
+        raise ValueError("dart pivot counts must satisfy image > 0 and text >= 0")
+    # The released DART defaults use four image and four text pivots.  At 5%
+    # that exceeds the complete budget, so scale image pivots down and leave
+    # room for at least one duplication-aware farthest-token selection.
+    non_anchor_budget = request.keep_count - 1
+    image_pivot_count = min(
+        requested_image_pivots,
+        max(1, non_anchor_budget // 2),
+        request.token_count - 1,
+    )
+    image_scores = visual_keys[:-1].abs().sum(dim=-1)
+    image_pivots = image_scores.topk(image_pivot_count, sorted=True).indices
+    text_pivot_count = min(requested_text_pivots, len(text_keys))
+    text_pivots = (
+        text_keys.abs().sum(dim=-1).topk(text_pivot_count, sorted=True).indices
+        if text_pivot_count
+        else torch.empty(0, dtype=torch.long, device=request.device)
+    )
+
+    selected_mask = torch.zeros(request.token_count, dtype=torch.bool, device=request.device)
+    selected_mask[anchor] = True
+    selected_mask[image_pivots] = True
+    pivot_vectors = [visual_values[index] for index in image_pivots]
+    pivot_vectors.extend(text_values[index] for index in text_pivots)
+    if not pivot_vectors:
+        pivot_vectors.append(visual_values[image_scores.argmax()])
+
+    step = 0
+    while int(selected_mask.sum()) < request.keep_count:
+        candidates = (~selected_mask).nonzero(as_tuple=False).flatten()
+        pivot = pivot_vectors[step % len(pivot_vectors)]
+        similarities = visual_values.index_select(0, candidates) @ pivot
+        selected_mask[candidates[similarities.argmin()]] = True
+        step += 1
+    return selected_mask.nonzero(as_tuple=False).flatten()
+
+
+def _greedy_prune_strategy(request: VisionTokenSelectionRequest) -> torch.Tensor:
+    """Semantic-saliency sorting plus greedy redundancy suppression."""
+
+    if request.keep_count == request.token_count:
+        return torch.arange(request.token_count, device=request.device)
+    if request.keep_count == 1:
+        return torch.tensor([request.token_count - 1], device=request.device)
+    threshold = float(request.options.get("similarity_threshold", 0.9))
+    if not -1.0 <= threshold <= 1.0:
+        raise ValueError("greedy_prune similarity_threshold must be in [-1, 1]")
+
+    visual = torch.nn.functional.normalize(
+        _flat_float(request.value_states, name="greedy_prune"),
+        dim=-1,
+    )
+    last_text = torch.nn.functional.normalize(
+        _decoder_text_features(
+            request,
+            source="value",
+            strategy_name="greedy_prune",
+        )[-1],
+        dim=0,
+    )
+    target = request.keep_count - 1
+    candidates = visual[:-1]
+    saliency = candidates @ last_text
+    order = saliency.argsort(descending=True, stable=True)
+    active = torch.ones(len(candidates), dtype=torch.bool, device=request.device)
+    selected: list[torch.Tensor] = []
+    for pivot in order:
+        if not bool(active[pivot]):
+            continue
+        selected.append(pivot)
+        if len(selected) == target:
+            break
+        redundant = (candidates @ candidates[pivot]) > threshold
+        active &= ~redundant
+
+    # The paper permits early termination when no candidates remain.  The
+    # experiment protocol requires an exact K for controlled ratio comparisons,
+    # so deterministically fill from the remaining saliency order if necessary.
+    if len(selected) < target:
+        selected_ids = torch.zeros(len(candidates), dtype=torch.bool, device=request.device)
+        if selected:
+            selected_ids[torch.stack(selected)] = True
+        for candidate in order:
+            if not bool(selected_ids[candidate]):
+                selected.append(candidate)
+                selected_ids[candidate] = True
+                if len(selected) == target:
+                    break
+
+    anchor = order.new_tensor([request.token_count - 1])
+    return torch.cat((torch.stack(selected), anchor)).sort().values
 
 
 def register_vision_token_strategy(
@@ -226,6 +420,10 @@ class VisionTokenSelectionEngine:
         key_states: torch.Tensor,
         value_states: torch.Tensor,
         layer_index: int,
+        context_query_states: torch.Tensor | None = None,
+        context_key_states: torch.Tensor | None = None,
+        context_value_states: torch.Tensor | None = None,
+        visual_context_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         token_count = len(key_states)
         keep_count = compute_keep_count(token_count, self.config.keep_ratio)
@@ -241,6 +439,10 @@ class VisionTokenSelectionEngine:
             query_states=query_states,
             key_states=key_states,
             value_states=value_states,
+            context_query_states=context_query_states,
+            context_key_states=context_key_states,
+            context_value_states=context_value_states,
+            visual_context_mask=visual_context_mask,
             layer_index=layer_index,
             options=self.config.selector_kwargs,
         )
@@ -250,3 +452,6 @@ class VisionTokenSelectionEngine:
 register_vision_token_strategy("random", _random_strategy)
 register_vision_token_strategy("uniform", _uniform_strategy)
 register_vision_token_strategy("key_norm", _key_norm_strategy)
+register_vision_token_strategy("dart", _dart_strategy)
+register_vision_token_strategy("divprune", _divprune_strategy)
+register_vision_token_strategy("greedy_prune", _greedy_prune_strategy)

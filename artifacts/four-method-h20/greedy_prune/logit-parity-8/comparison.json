@@ -1,0 +1,112 @@
+{
+  "all_greedy_tokens_match": true,
+  "max_sampled_logprob_abs_diff": 0.061769962310791016,
+  "sampled_tolerance": 0.08,
+  "comparisons": [
+    {
+      "step": 0,
+      "phase": "prefill",
+      "token_id": 785,
+      "transformers_argmax_token_id": 785,
+      "sampled_logprob_abs_diff": 0.02526506781578064,
+      "shared_top20_tokens": 19,
+      "max_shared_top20_logprob_abs_diff": 0.09973502159118652,
+      "compared_logprob_count": 20,
+      "all_logprob_abs_diff_mean": 0.06994696706533432,
+      "all_logprob_abs_diff_p99": 0.09973502159118652,
+      "all_logprob_abs_diff_max": 0.09973502159118652
+    },
+    {
+      "step": 1,
+      "phase": "decode",
+      "token_id": 2115,
+      "transformers_argmax_token_id": 2115,
+      "sampled_logprob_abs_diff": 0.0245358943939209,
+      "shared_top20_tokens": 19,
+      "max_shared_top20_logprob_abs_diff": 0.1004641056060791,
+      "compared_logprob_count": 20,
+      "all_logprob_abs_diff_mean": 0.047314416617155075,
+      "all_logprob_abs_diff_p99": 0.10046406090259552,
+      "all_logprob_abs_diff_max": 0.1004641056060791
+    },
+    {
+      "step": 2,
+      "phase": "decode",
+      "token_id": 6083,
+      "transformers_argmax_token_id": 6083,
+      "sampled_logprob_abs_diff": 0.001369178295135498,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.12363100051879883,
+      "compared_logprob_count": 20,
+      "all_logprob_abs_diff_mean": 0.03193458169698715,
+      "all_logprob_abs_diff_p99": 0.12363100051879883,
+      "all_logprob_abs_diff_max": 0.12363100051879883
+    },
+    {
+      "step": 3,
+      "phase": "decode",
+      "token_id": 374,
+      "transformers_argmax_token_id": 374,
+      "sampled_logprob_abs_diff": 0.0004377043806016445,
+      "shared_top20_tokens": 18,
+      "max_shared_top20_logprob_abs_diff": 0.12456226348876953,
+      "compared_logprob_count": 20,
+      "all_logprob_abs_diff_mean": 0.0190564151853323,
+      "all_logprob_abs_diff_p99": 0.12456226348876953,
+      "all_logprob_abs_diff_max": 0.12456226348876953
+    },
+    {
+      "step": 4,
+      "phase": "decode",
+      "token_id": 2518,
+      "transformers_argmax_token_id": 2518,
+      "sampled_logprob_abs_diff": 0.061769962310791016,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.06323003768920898,
+      "compared_logprob_count": 20,
+      "all_logprob_abs_diff_mean": 0.056468892842531204,
+      "all_logprob_abs_diff_p99": 0.06323003768920898,
+      "all_logprob_abs_diff_max": 0.06323003768920898
+    },
+    {
+      "step": 5,
+      "phase": "decode",
+      "token_id": 323,
+      "transformers_argmax_token_id": 323,
+      "sampled_logprob_abs_diff": 0.004263103008270264,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.12073707580566406,
+      "compared_logprob_count": 20,
+      "all_logprob_abs_diff_mean": 0.015910416841506958,
+      "all_logprob_abs_diff_p99": 0.12073703110218048,
+      "all_logprob_abs_diff_max": 0.12073707580566406
+    },
+    {
+      "step": 6,
+      "phase": "decode",
+      "token_id": 279,
+      "transformers_argmax_token_id": 279,
+      "sampled_logprob_abs_diff": 0.0003008991479873657,
+      "shared_top20_tokens": 19,
+      "max_shared_top20_logprob_abs_diff": 0.12530088424682617,
+      "compared_logprob_count": 20,
+      "all_logprob_abs_diff_mean": 0.05330553278326988,
+      "all_logprob_abs_diff_p99": 0.12530088424682617,
+      "all_logprob_abs_diff_max": 0.12530088424682617
+    },
+    {
+      "step": 7,
+      "phase": "decode",
+      "token_id": 1290,
+      "transformers_argmax_token_id": 1290,
+      "sampled_logprob_abs_diff": 0.00025316979736089706,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.12474727630615234,
+      "compared_logprob_count": 20,
+      "all_logprob_abs_diff_mean": 0.08117423206567764,
+      "all_logprob_abs_diff_p99": 0.12474727630615234,
+      "all_logprob_abs_diff_max": 0.12474727630615234
+    }
+  ],
+  "within_tolerance": true
+}

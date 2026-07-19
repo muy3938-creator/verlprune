@@ -1,5 +1,5 @@
 from .config import VisionTokenPruningConfig, compute_selector_fingerprint
-from .protocol import VisionTokenSelection
+from .protocol import DynamicVisionTokenSelection, VisionTokenSelection
 from .selectors import (
     available_vision_token_selectors,
     register_vision_token_selector,
@@ -18,6 +18,7 @@ __all__ = [
     "VisionTokenSelectionEngine",
     "VisionTokenSelectionRequest",
     "VisionTokenSelection",
+    "DynamicVisionTokenSelection",
     "available_vision_token_strategies",
     "available_vision_token_selectors",
     "compute_selector_fingerprint",

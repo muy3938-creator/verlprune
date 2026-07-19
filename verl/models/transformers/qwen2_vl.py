@@ -20,6 +20,7 @@ from typing import Optional
 
 import torch
 import torch.distributed as dist
+import torch.nn.functional as F
 from transformers.modeling_flash_attention_utils import _flash_attention_forward, fa_peft_integration_check
 from transformers.models.qwen2_vl.modeling_qwen2_vl import (
     Qwen2VLAttention,
@@ -291,12 +292,20 @@ def qwen2_vl_attn_forward(
 
     bsz, q_len, _ = hidden_states.size()  # q_len = seq_length / sp_size
     layerwise_pruning_mask = kwargs.pop("vision_token_pruning_mask", None)
+    dynamic_attention_mask = kwargs.pop("vision_token_dynamic_attention_mask", None)
     prune_after_layer = kwargs.pop("vision_token_prune_after_layer", None)
     apply_layerwise_pruning = (
         layerwise_pruning_mask is not None
         and prune_after_layer is not None
         and self.layer_idx > int(prune_after_layer)
     )
+    apply_dynamic_pruning = (
+        dynamic_attention_mask is not None
+        and prune_after_layer is not None
+        and self.layer_idx > int(prune_after_layer)
+    )
+    if layerwise_pruning_mask is not None and dynamic_attention_mask is not None:
+        raise ValueError("static and dynamic vision-token pruning masks are mutually exclusive")
     query_states = self.q_proj(hidden_states)  # (batch_size, seq_length / sp_size, num_heads * head_size)
     key_states = self.k_proj(hidden_states)
     value_states = self.v_proj(hidden_states)
@@ -349,18 +358,45 @@ def qwen2_vl_attn_forward(
             raise ValueError("layerwise pruning mask must match the padded attention mask")
         attention_mask = attention_mask * layerwise_pruning_mask.to(attention_mask.device)
 
-    attn_output = _custom_flash_attention_forward(
-        query_states,
-        key_states,
-        value_states,
-        attention_mask,
-        query_length=q_len,
-        is_causal=getattr(self, "is_causal", True),
-        dropout=dropout_rate,
-        sliding_window=sliding_window,
-        use_top_left_mask=_flash_use_top_left_mask,
-        position_ids=position_ids,  # important: pass position ids
-    )  # (batch_size, seq_length / sp_size, num_head, head_size)
+    if apply_dynamic_pruning:
+        if dynamic_attention_mask.shape != (bsz, q_len, q_len):
+            raise ValueError(
+                "dynamic vision-token attention mask must have shape "
+                f"[{bsz}, {q_len}, {q_len}]"
+            )
+        allowed = dynamic_attention_mask.to(device=query_states.device, dtype=torch.bool)
+        if getattr(self, "is_causal", True):
+            allowed = allowed & torch.ones(
+                (q_len, q_len),
+                dtype=torch.bool,
+                device=query_states.device,
+            ).tril()
+        if attention_mask is not None:
+            if attention_mask.ndim != 2 or attention_mask.shape != (bsz, q_len):
+                raise ValueError("dynamic pruning expects a rank-2 padding attention mask")
+            allowed = allowed & attention_mask[:, None, :].bool()
+        attn_output = F.scaled_dot_product_attention(
+            query_states.transpose(1, 2),
+            key_states.transpose(1, 2),
+            value_states.transpose(1, 2),
+            attn_mask=allowed[:, None, :, :],
+            dropout_p=dropout_rate,
+            is_causal=False,
+            scale=kwargs.pop("softmax_scale", None),
+        ).transpose(1, 2)
+    else:
+        attn_output = _custom_flash_attention_forward(
+            query_states,
+            key_states,
+            value_states,
+            attention_mask,
+            query_length=q_len,
+            is_causal=getattr(self, "is_causal", True),
+            dropout=dropout_rate,
+            sliding_window=sliding_window,
+            use_top_left_mask=_flash_use_top_left_mask,
+            position_ids=position_ids,  # important: pass position ids
+        )  # (batch_size, seq_length / sp_size, num_head, head_size)
     if retained_indices is not None:
         compact_output = attn_output
         attn_output = compact_output.new_zeros((bsz, hidden_states.shape[1], *compact_output.shape[2:]))

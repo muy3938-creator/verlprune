@@ -1,9 +1,11 @@
 import pytest
 
 from verl.models.vision_token_pruning.protocol import (
+    DynamicVisionTokenSelection,
     VisionTokenSelection,
     compute_keep_count,
     decode_rollout_selection,
+    selection_from_wire,
 )
 
 
@@ -85,3 +87,14 @@ def test_decode_vllm_metadata_requires_exact_count():
             keep_ratio=0.5,
             original_visual_token_count=4,
         )
+
+
+def test_dynamic_selection_round_trip_allows_variable_per_query_budgets():
+    selection = DynamicVisionTokenSelection(
+        nominal_keep_ratio=0.05,
+        original_visual_token_count=8,
+        query_kept_visual_indices=((), (1, 6), (0, 2, 5), (7,)),
+        selector="vision_pulse",
+    )
+
+    assert selection_from_wire(selection.to_wire()) == selection

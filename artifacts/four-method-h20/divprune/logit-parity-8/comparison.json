@@ -1,0 +1,112 @@
+{
+  "all_greedy_tokens_match": true,
+  "max_sampled_logprob_abs_diff": 0.029140949249267578,
+  "sampled_tolerance": 0.08,
+  "comparisons": [
+    {
+      "step": 0,
+      "phase": "prefill",
+      "token_id": 785,
+      "transformers_argmax_token_id": 785,
+      "sampled_logprob_abs_diff": 0.002737775444984436,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.12773752212524414,
+      "compared_logprob_count": 151936,
+      "all_logprob_abs_diff_mean": 0.04905315488576889,
+      "all_logprob_abs_diff_p99": 0.12226295471191406,
+      "all_logprob_abs_diff_max": 0.18476295471191406
+    },
+    {
+      "step": 1,
+      "phase": "decode",
+      "token_id": 1156,
+      "transformers_argmax_token_id": 1156,
+      "sampled_logprob_abs_diff": 0.012550115585327148,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.11244964599609375,
+      "compared_logprob_count": 151936,
+      "all_logprob_abs_diff_mean": 0.030991150066256523,
+      "all_logprob_abs_diff_p99": 0.11244964599609375,
+      "all_logprob_abs_diff_max": 0.23744964599609375
+    },
+    {
+      "step": 2,
+      "phase": "decode",
+      "token_id": 6083,
+      "transformers_argmax_token_id": 6083,
+      "sampled_logprob_abs_diff": 0.001911986619234085,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.12308788299560547,
+      "compared_logprob_count": 151936,
+      "all_logprob_abs_diff_mean": 0.04514779895544052,
+      "all_logprob_abs_diff_p99": 0.12308883666992188,
+      "all_logprob_abs_diff_max": 0.18558883666992188
+    },
+    {
+      "step": 3,
+      "phase": "decode",
+      "token_id": 374,
+      "transformers_argmax_token_id": 374,
+      "sampled_logprob_abs_diff": 4.7655776143074036e-05,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.1250467300415039,
+      "compared_logprob_count": 151936,
+      "all_logprob_abs_diff_mean": 0.04843439161777496,
+      "all_logprob_abs_diff_p99": 0.12495231628417969,
+      "all_logprob_abs_diff_max": 0.22651290893554688
+    },
+    {
+      "step": 4,
+      "phase": "decode",
+      "token_id": 2518,
+      "transformers_argmax_token_id": 2518,
+      "sampled_logprob_abs_diff": 0.029140949249267578,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.15414094924926758,
+      "compared_logprob_count": 151936,
+      "all_logprob_abs_diff_mean": 0.09709828346967697,
+      "all_logprob_abs_diff_p99": 0.18539047241210938,
+      "all_logprob_abs_diff_max": 0.2566795349121094
+    },
+    {
+      "step": 5,
+      "phase": "decode",
+      "token_id": 323,
+      "transformers_argmax_token_id": 323,
+      "sampled_logprob_abs_diff": 0.00014984607696533203,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.1251506805419922,
+      "compared_logprob_count": 151936,
+      "all_logprob_abs_diff_mean": 0.086074098944664,
+      "all_logprob_abs_diff_p99": 0.1717243194580078,
+      "all_logprob_abs_diff_max": 0.2498493194580078
+    },
+    {
+      "step": 6,
+      "phase": "decode",
+      "token_id": 279,
+      "transformers_argmax_token_id": 279,
+      "sampled_logprob_abs_diff": 0.014658436179161072,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.11034154891967773,
+      "compared_logprob_count": 151936,
+      "all_logprob_abs_diff_mean": 0.04914625734090805,
+      "all_logprob_abs_diff_p99": 0.11237525939941406,
+      "all_logprob_abs_diff_max": 0.19237327575683594
+    },
+    {
+      "step": 7,
+      "phase": "decode",
+      "token_id": 2086,
+      "transformers_argmax_token_id": 2086,
+      "sampled_logprob_abs_diff": 1.2816861271858215e-05,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.12498760223388672,
+      "compared_logprob_count": 151936,
+      "all_logprob_abs_diff_mean": 0.11414129287004471,
+      "all_logprob_abs_diff_p99": 0.1913928985595703,
+      "all_logprob_abs_diff_max": 0.2812385559082031
+    }
+  ],
+  "within_tolerance": true
+}

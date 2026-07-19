@@ -1,0 +1,112 @@
+{
+  "all_greedy_tokens_match": true,
+  "max_sampled_logprob_abs_diff": 0.0678257942199707,
+  "sampled_tolerance": 0.08,
+  "comparisons": [
+    {
+      "step": 0,
+      "phase": "prefill",
+      "token_id": 785,
+      "transformers_argmax_token_id": 785,
+      "sampled_logprob_abs_diff": 0.022732168436050415,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.22726726531982422,
+      "compared_logprob_count": 20,
+      "all_logprob_abs_diff_mean": 0.07272674888372421,
+      "all_logprob_abs_diff_p99": 0.20351728796958923,
+      "all_logprob_abs_diff_max": 0.22726726531982422
+    },
+    {
+      "step": 1,
+      "phase": "decode",
+      "token_id": 20816,
+      "transformers_argmax_token_id": 20816,
+      "sampled_logprob_abs_diff": 0.016724228858947754,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.1082758903503418,
+      "compared_logprob_count": 20,
+      "all_logprob_abs_diff_mean": 0.06249997019767761,
+      "all_logprob_abs_diff_p99": 0.1082758903503418,
+      "all_logprob_abs_diff_max": 0.1082758903503418
+    },
+    {
+      "step": 2,
+      "phase": "decode",
+      "token_id": 525,
+      "transformers_argmax_token_id": 525,
+      "sampled_logprob_abs_diff": 0.00574880838394165,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.13074874877929688,
+      "compared_logprob_count": 20,
+      "all_logprob_abs_diff_mean": 0.051724620163440704,
+      "all_logprob_abs_diff_p99": 0.12856422364711761,
+      "all_logprob_abs_diff_max": 0.13074874877929688
+    },
+    {
+      "step": 3,
+      "phase": "decode",
+      "token_id": 264,
+      "transformers_argmax_token_id": 264,
+      "sampled_logprob_abs_diff": 0.0008789040148258209,
+      "shared_top20_tokens": 19,
+      "max_shared_top20_logprob_abs_diff": 0.12587928771972656,
+      "compared_logprob_count": 20,
+      "all_logprob_abs_diff_mean": 0.056425791233778,
+      "all_logprob_abs_diff_p99": 0.12554524838924408,
+      "all_logprob_abs_diff_max": 0.12587928771972656
+    },
+    {
+      "step": 4,
+      "phase": "decode",
+      "token_id": 2518,
+      "transformers_argmax_token_id": 2518,
+      "sampled_logprob_abs_diff": 0.0678257942199707,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.0678257942199707,
+      "compared_logprob_count": 20,
+      "all_logprob_abs_diff_mean": 0.06196742132306099,
+      "all_logprob_abs_diff_p99": 0.0678257942199707,
+      "all_logprob_abs_diff_max": 0.0678257942199707
+    },
+    {
+      "step": 5,
+      "phase": "decode",
+      "token_id": 9334,
+      "transformers_argmax_token_id": 9334,
+      "sampled_logprob_abs_diff": 0.0031815767288208008,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.24681806564331055,
+      "compared_logprob_count": 20,
+      "all_logprob_abs_diff_mean": 0.09872724115848541,
+      "all_logprob_abs_diff_p99": 0.24681806564331055,
+      "all_logprob_abs_diff_max": 0.24681806564331055
+    },
+    {
+      "step": 6,
+      "phase": "decode",
+      "token_id": 323,
+      "transformers_argmax_token_id": 323,
+      "sampled_logprob_abs_diff": 0.0062716007232666016,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.1187286376953125,
+      "compared_logprob_count": 20,
+      "all_logprob_abs_diff_mean": 0.05125429853796959,
+      "all_logprob_abs_diff_p99": 0.1187286376953125,
+      "all_logprob_abs_diff_max": 0.1187286376953125
+    },
+    {
+      "step": 7,
+      "phase": "decode",
+      "token_id": 264,
+      "transformers_argmax_token_id": 264,
+      "sampled_logprob_abs_diff": 0.00019883329514414072,
+      "shared_top20_tokens": 20,
+      "max_shared_top20_logprob_abs_diff": 0.1251993179321289,
+      "compared_logprob_count": 20,
+      "all_logprob_abs_diff_mean": 0.07498007267713547,
+      "all_logprob_abs_diff_p99": 0.12512366473674774,
+      "all_logprob_abs_diff_max": 0.1251993179321289
+    }
+  ],
+  "within_tolerance": true
+}

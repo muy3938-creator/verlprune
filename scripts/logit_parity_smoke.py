@@ -49,6 +49,11 @@ def run_vllm(
     prune_after_layer: int,
     max_tokens: int,
     all_logprobs: bool,
+    dynamic: bool,
+    selector: str,
+    selector_input: str,
+    selector_kwargs: dict,
+    gpu_memory_utilization: float,
 ) -> None:
     os.environ.setdefault("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
     os.environ.setdefault("VLLM_PLUGINS", "vision_opd_token_pruning")
@@ -67,16 +72,21 @@ def run_vllm(
         keep_ratio=keep_ratio,
         prune_after_layer=prune_after_layer,
         layerwise_backend="flex",
-        selector="uniform",
-        selector_input="vision_embedding",
+        selector="vision_pulse" if dynamic else selector,
+        selector_kwargs=selector_kwargs,
+        selector_input="decode_query" if dynamic else selector_input,
     )
+    processed = processor(text=[prompt], images=[image], return_tensors="pt")
+    grid = processed["image_grid_thw"][0].tolist()
+    merge_size = int(processor.image_processor.merge_size)
+    original_visual_tokens = int(grid[0] * grid[1] * grid[2] // (merge_size**2))
     llm_kwargs = dict(
         model=model_path,
         dtype="bfloat16",
         max_model_len=512,
         max_num_seqs=1,
         max_num_batched_tokens=512,
-        gpu_memory_utilization=0.10,
+        gpu_memory_utilization=gpu_memory_utilization,
         kv_cache_memory_bytes=128 * 1024 * 1024,
         enforce_eager=True,
         limit_mm_per_prompt={"image": 1, "video": 0},
@@ -87,7 +97,11 @@ def run_vllm(
         attention_config={"backend": "FLEX_ATTENTION"},
         hf_overrides={
             "architectures": ["VerlLayerwiseFlexPrunedQwen2_5VLForConditionalGeneration"],
-            "text_config": {"num_experts_per_tok": 1},
+            "text_config": {
+                "num_experts_per_tok": int(selector_kwargs.get("capture_capacity", 64))
+                if dynamic
+                else 1
+            },
             "vision_token_pruning": config.to_backend_payload(),
         },
     )
@@ -116,6 +130,28 @@ def run_vllm(
                 },
             }
         )
+    if dynamic:
+        from verl.models.vision_token_pruning.transport import (
+            decode_vllm_dynamic_selection_capture,
+        )
+
+        selection_wire = decode_vllm_dynamic_selection_capture(
+            output.routed_experts,
+            nominal_keep_ratio=keep_ratio,
+            original_visual_token_count=original_visual_tokens,
+            selector="vision_pulse",
+            selector_kwargs=selector_kwargs,
+        ).to_wire()
+    else:
+        from verl.models.vision_token_pruning.transport import decode_vllm_selection_capture
+
+        selection_wire = decode_vllm_selection_capture(
+            output.routed_experts,
+            keep_ratio=keep_ratio,
+            original_visual_token_count=original_visual_tokens,
+            selector=selector,
+            selector_kwargs=selector_kwargs,
+        ).to_wire()
     payload = {
         "model_path": model_path,
         "image_path": str(image_path),
@@ -124,6 +160,11 @@ def run_vllm(
         "prune_after_layer": prune_after_layer,
         "generated_text": output.text,
         "all_logprobs": all_logprobs,
+        "dynamic": dynamic,
+        "selector": "vision_pulse" if dynamic else selector,
+        "selector_input": "decode_query" if dynamic else selector_input,
+        "selector_kwargs": selector_kwargs,
+        "selection": selection_wire,
         "steps": steps,
     }
     (output_dir / "vllm.json").write_text(
@@ -141,7 +182,11 @@ def run_transformers(output_dir: Path) -> None:
 
     from verl.models.transformers.monkey_patch import apply_monkey_patch
     from verl.models.transformers.qwen2_vl import get_rope_index
-    from verl.models.vision_token_pruning.protocol import compute_keep_count
+    from verl.models.vision_token_pruning.protocol import VisionTokenSelection
+    from verl.models.vision_token_pruning.training import (
+        attach_selection_to_multi_modal_inputs,
+        replay_dynamic_rollout_selection,
+    )
 
     reference = json.loads((output_dir / "vllm.json").read_text(encoding="utf-8"))
     model_path = reference["model_path"]
@@ -157,16 +202,34 @@ def run_transformers(output_dir: Path) -> None:
     image_grid_thw = prompt_inputs["image_grid_thw"].cuda()
     image_token_id = processor.tokenizer.convert_tokens_to_ids("<|image_pad|>")
     image_positions = (input_ids[0] == image_token_id).nonzero(as_tuple=False).flatten()
-    keep_count = compute_keep_count(len(image_positions), float(reference["keep_ratio"]))
-    if keep_count == 1:
-        selected = torch.tensor([len(image_positions) - 1], device="cuda")
+    dynamic = bool(reference.get("dynamic", False))
+    selected = None
+    full_dynamic_mask = None
+    if dynamic:
+        full_replay_ids = torch.cat(
+            (
+                input_ids,
+                input_ids.new_tensor([[step["token_id"] for step in reference["steps"]]]),
+            ),
+            dim=1,
+        ).cpu()
+        full_replay_attention = torch.ones_like(full_replay_ids)
+        attached = attach_selection_to_multi_modal_inputs({}, reference["selection"])
+        full_dynamic_mask = replay_dynamic_rollout_selection(
+            full_replay_ids,
+            full_replay_attention,
+            [attached],
+            image_token_id=image_token_id,
+            expected_keep_ratio=float(reference["keep_ratio"]),
+            expected_selector="vision_pulse",
+            expected_selector_kwargs=reference["selector_kwargs"],
+        ).cuda()
     else:
-        selected = torch.linspace(
-            0,
-            len(image_positions) - 1,
-            steps=keep_count,
+        selected = torch.tensor(
+            VisionTokenSelection.from_wire(reference["selection"]).kept_visual_indices,
+            dtype=torch.long,
             device="cuda",
-        ).round().long()
+        )
 
     model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
         model_path,
@@ -182,9 +245,16 @@ def run_transformers(output_dir: Path) -> None:
     with torch.no_grad():
         for vllm_step in reference["steps"]:
             sequence_length = input_ids.shape[1]
-            keep_mask = torch.ones((1, sequence_length), dtype=torch.bool, device="cuda")
-            keep_mask[0, image_positions] = False
-            keep_mask[0, image_positions[selected]] = True
+            pruning_kwargs = {}
+            if dynamic:
+                pruning_kwargs["vision_token_dynamic_attention_mask"] = full_dynamic_mask[
+                    :, :sequence_length, :sequence_length
+                ]
+            else:
+                keep_mask = torch.ones((1, sequence_length), dtype=torch.bool, device="cuda")
+                keep_mask[0, image_positions] = False
+                keep_mask[0, image_positions[selected]] = True
+                pruning_kwargs["vision_token_pruning_mask"] = keep_mask
             full_attention_mask = torch.ones_like(input_ids)
             vision_position_ids = get_rope_index(
                 processor,
@@ -205,8 +275,8 @@ def run_transformers(output_dir: Path) -> None:
                 pixel_values=pixel_values,
                 image_grid_thw=image_grid_thw,
                 use_cache=False,
-                vision_token_pruning_mask=keep_mask,
                 vision_token_prune_after_layer=int(reference["prune_after_layer"]),
+                **pruning_kwargs,
             )
             logprobs = output.logits[0, -1].float().log_softmax(dim=-1)
             argmax_token_id = int(logprobs.argmax())
@@ -249,13 +319,13 @@ def run_transformers(output_dir: Path) -> None:
             )
 
     payload = {
-        "selected_visual_indices": selected.tolist(),
+        "selected_visual_indices": selected.tolist() if selected is not None else None,
         "steps": steps,
     }
     (output_dir / "transformers.json").write_text(
         json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    print(f"selected_visual_indices={selected.tolist()}")
+    print(f"selected_visual_indices={selected.tolist() if selected is not None else 'dynamic'}")
     print(f"argmax_token_ids={[step['argmax_token_id'] for step in steps]}")
     print("LOGIT_PARITY_TRANSFORMERS=PASS")
 
@@ -329,7 +399,16 @@ def main() -> None:
     parser.add_argument("--prune-after-layer", type=int, default=15)
     parser.add_argument("--max-tokens", type=int, default=8)
     parser.add_argument("--sampled-tolerance", type=float, default=0.15)
+    parser.add_argument("--gpu-memory-utilization", type=float, default=0.30)
     parser.add_argument("--all-logprobs", action="store_true")
+    parser.add_argument("--dynamic", action="store_true")
+    parser.add_argument("--selector", default="uniform")
+    parser.add_argument(
+        "--selector-input",
+        choices=("vision_embedding", "decoder_key"),
+        default="vision_embedding",
+    )
+    parser.add_argument("--selector-kwargs", type=json.loads, default={})
     args = parser.parse_args()
     if args.stage == "vllm":
         run_vllm(
@@ -339,6 +418,11 @@ def main() -> None:
             prune_after_layer=args.prune_after_layer,
             max_tokens=args.max_tokens,
             all_logprobs=args.all_logprobs,
+            dynamic=args.dynamic,
+            selector=args.selector,
+            selector_input=args.selector_input,
+            selector_kwargs=args.selector_kwargs,
+            gpu_memory_utilization=args.gpu_memory_utilization,
         )
     elif args.stage == "transformers":
         run_transformers(args.output_dir)

@@ -63,3 +63,22 @@ def test_compact_flash_reference_backend_does_not_request_flex_attention():
     assert options.hf_overrides["architectures"] == [
         "VerlLayerwisePrunedQwen2_5VLForConditionalGeneration"
     ]
+
+
+def test_dynamic_decode_reserves_capture_width():
+    config = VisionTokenPruningConfig(
+        enabled=True,
+        keep_ratio=0.05,
+        prune_after_layer=15,
+        selector="vision_pulse",
+        selector_input="decode_query",
+        selector_kwargs={"capture_capacity": 32},
+    )
+
+    options = build_vllm_pruning_launch_options(
+        config,
+        model_type="qwen2_5_vl",
+        routing_replay_enabled=False,
+    )
+
+    assert options.hf_overrides["text_config"]["num_experts_per_tok"] == 32

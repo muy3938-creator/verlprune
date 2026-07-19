@@ -1,0 +1,46 @@
+{
+  "generated_text": "The shapes are a red square and a blue circle.",
+  "full_sequence_tokens": 111,
+  "student_sequence_tokens": 111,
+  "full_visual_tokens": 64,
+  "student_visual_tokens": [
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3
+  ],
+  "response_tokens": 12,
+  "prune_after_layer": 15,
+  "training_steps": 3,
+  "step_losses": [
+    0.03243640810251236,
+    0.03245840221643448,
+    0.03177306428551674
+  ],
+  "step_raw_jsd": [
+    0.03243640810251236,
+    0.03245840221643448,
+    0.03177306428551674
+  ],
+  "step_grad_norms": [
+    0.078125,
+    0.07861328125,
+    0.07666015625
+  ],
+  "loss_before": 0.03243640810251236,
+  "loss_after": 0.03162183240056038,
+  "raw_jsd_before": 0.03243640810251236,
+  "raw_jsd_after": 0.03162183240056038,
+  "grad_norm": 0.07666015625,
+  "parameter_delta_norm": 0.02597028575837612,
+  "trainable_parameters": 4194304,
+  "attention_backend": "flash_attention_2"
+}

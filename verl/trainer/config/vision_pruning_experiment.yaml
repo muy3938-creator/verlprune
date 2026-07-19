@@ -54,6 +54,10 @@ actor_rollout_ref:
 
       prune_after_layer: -1
 
+      layerwise_backend: flex
+
+      selector_input: vision_embedding
+
   actor:
 
     ppo_mini_batch_size: 1
