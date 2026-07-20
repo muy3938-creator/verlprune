@@ -48,7 +48,7 @@ actor_rollout_ref:
 
       keep_ratio: 0.5
 
-      selector: random
+      selector: embedding_norm
 
       selector_kwargs: {}
 

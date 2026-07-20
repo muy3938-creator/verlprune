@@ -13,7 +13,7 @@ latency/memory improvement at contexts up to approximately 2K tokens?
 ## Required semantics
 
 1. Select cache entries once per request with a deterministic seed or explicit
-   algorithm and preserve the final visual MRoPE anchor.
+   algorithm without requiring a fixed visual anchor token.
 2. Never randomly resample the cache independently at every decode step.
 3. Keep every generated token so autoregressive history remains complete.
 4. Record exact retained prompt indices and the decoder-layer boundary in a

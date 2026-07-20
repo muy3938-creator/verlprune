@@ -11,7 +11,7 @@ def test_layer0_physical_pruning_is_wired_before_actor_unpadding():
     assert "embeddings[kept_indices]" in plugin
     assert "supports_multimodal_pruning = True" in plugin
     assert "update.replacement = pruned_replacement" in plugin
-    pending_capture = plugin.index("self._pending_capture_values = capture_values")
+    pending_capture = plugin.index("self._pending_capture_values = (capture_values, capture_counts)")
     forward_capture = plugin.index("capturer.capture(0, capture_values)")
     assert pending_capture < forward_capture
     assert "if capturer is not None:" in plugin

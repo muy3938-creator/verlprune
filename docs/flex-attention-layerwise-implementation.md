@@ -114,7 +114,8 @@ The actual `decoder_key`/`key_norm` path was run at layer 15 with 10% keep:
 
 - both requests selected 6 of 64 image tokens;
 - selected indices were `[20, 28, 37, 52, 58, 63]`;
-- layer 63 remained the mandatory MRoPE anchor;
+- layer 63 happened to be retained in that historical selector run; current
+  selectors no longer require it as an anchor;
 - median latency was 2.117 s and output throughput was 12.27 tok/s;
 - both requests produced: `The left shape is red and the right shape is blue.`
 

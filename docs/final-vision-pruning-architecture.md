@@ -140,10 +140,11 @@ all fields before its forward pass.
 
 ## Adding an algorithm
 
-Two selectors are included:
+The built-in layer-0 selectors include:
 
-- `random`: seedable random retention with the final MRoPE anchor preserved;
-- `uniform`: spatially uniform retention with the same anchor rule.
+- `embedding_norm`: the default, retaining the largest visual-embedding L2 norms;
+- `random`: seedable random retention;
+- `uniform`: spatially uniform retention.
 
 For an external algorithm, expose one installed Python function and configure
 its import path:
@@ -159,7 +160,6 @@ def select_tokens(
     grid_thw,
 ):
     # Return a sorted, unique integer tensor with exactly keep_count entries.
-    # The last entry must be token_count - 1 (the MRoPE anchor).
     ...
 ```
 
@@ -204,8 +204,9 @@ backend hook, but they can keep the same selection protocol and actor replay.
   Treat layerwise mode as research-only until a stable backend API exists.
 - **Metadata transport conflict:** selection currently uses the routed-expert
   return channel and cannot run with rollout routing replay.
-- **Model coverage:** layerwise mode is validated only for Qwen2.5-VL;
-  layer-0 mode also supports Qwen3-VL.
+- **Model coverage:** the default layer-0 physical mode is validated on both
+  Qwen2.5-VL-3B and dense Qwen3-VL-4B. Qwen3 layerwise support remains
+  experimental; the Qwen3 result reported here is the simpler physical mode.
 - **FSDP CPU offload on the CNB image:** asynchronous parameter offload raised
   a CUDA invalid-argument error before pruning execution. Disable actor/ref
   parameter and optimizer offload on that image.

@@ -89,12 +89,12 @@ vision_token_pruning:
   keep_ratio: 0.5
 
   # rollout-side built-in name or importable module:function strategy
-  selector: random
+  selector: embedding_norm
 
   # JSON-compatible options passed only to the rollout-side strategy request
   selector_kwargs: {}
 
-  # -1 uses layer-0 physical pruning; N prunes attention/KV after decoder layer N
+  # -1 selects before layer 0 and physically shares the reduced visual KV with decode
   prune_after_layer: -1
 
   # flex is the research backend; compact_flash physically compacts static selections

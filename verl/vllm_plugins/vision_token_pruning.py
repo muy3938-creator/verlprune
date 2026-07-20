@@ -73,6 +73,7 @@ class VerlPrunedQwen3VLMultiModalProcessor(
 class _PruningMixin:
     supports_multimodal_pruning = True
     _append_zero_position_axis = False
+    _binary_selection_capture = False
 
     def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
         super().__init__(vllm_config=vllm_config, prefix=prefix)
@@ -88,7 +89,8 @@ class _PruningMixin:
                 "to activate consistent image pruning"
             )
         self._pending_selection_indices: list[torch.Tensor] = []
-        self._pending_capture_values: torch.Tensor | None = None
+        self._pending_original_counts: list[torch.Tensor] = []
+        self._pending_capture_values: tuple[torch.Tensor, torch.Tensor] | None = None
 
     def recompute_mrope_positions(
         self,
@@ -97,12 +99,23 @@ class _PruningMixin:
         mrope_positions: torch.LongTensor,
         num_computed_tokens: int,
     ):
-        self._pending_selection_indices.extend(
-            decode_embedding_selection_metadata(mm)
-            for mm in multimodal_embeddings
-            if len(mm)
+        for mm in multimodal_embeddings:
+            if not len(mm):
+                continue
+            if self._binary_selection_capture:
+                self._pending_selection_indices.append(
+                    decode_embedding_selection_metadata(mm[:, -4:-2])
+                )
+                self._pending_original_counts.append(
+                    decode_embedding_selection_metadata(mm[:, -2:])
+                )
+            else:
+                self._pending_selection_indices.append(decode_embedding_selection_metadata(mm))
+                self._pending_original_counts.append(mm.new_zeros(len(mm), dtype=torch.long))
+        metadata_columns = 4 if self._binary_selection_capture else 2
+        embeddings_without_metadata = tuple(
+            mm[:, :-metadata_columns] for mm in multimodal_embeddings
         )
-        embeddings_without_metadata = tuple(mm[:, :-2] for mm in multimodal_embeddings)
         return super().recompute_mrope_positions(
             input_ids,
             embeddings_without_metadata,
@@ -127,16 +140,27 @@ class _PruningMixin:
             if self._pending_selection_indices
             else input_ids.new_empty(0)
         )
+        original_counts = (
+            torch.cat(self._pending_original_counts)
+            if self._pending_selection_indices
+            else input_ids.new_empty(0)
+        )
         self._pending_selection_indices.clear()
+        self._pending_original_counts.clear()
 
         capture_values = torch.zeros((input_ids.numel(), 1), dtype=torch.int32, device=input_ids.device)
+        capture_counts = torch.zeros(input_ids.numel(), dtype=torch.int32, device=input_ids.device)
         if encoded.numel():
             if is_multimodal is None or int(is_multimodal.sum()) != encoded.numel():
                 raise ValueError("pruned visual embedding count does not match vLLM placeholders")
             capture_values[is_multimodal, 0] = encoded.to(device=input_ids.device, dtype=torch.int32)
+            capture_counts[is_multimodal] = original_counts.to(
+                device=input_ids.device,
+                dtype=torch.int32,
+            )
         if self._pending_capture_values is not None:
             raise RuntimeError("stale visual-token selection metadata was not consumed by vLLM forward")
-        self._pending_capture_values = capture_values
+        self._pending_capture_values = (capture_values, capture_counts)
         return inputs_embeds
 
     def forward(
@@ -147,12 +171,30 @@ class _PruningMixin:
         inputs_embeds: torch.Tensor | None = None,
         **kwargs: object,
     ):
-        capture_values = self._pending_capture_values
+        pending_capture = self._pending_capture_values
         self._pending_capture_values = None
-        if capture_values is not None:
+        if pending_capture is not None:
+            capture_values, capture_counts = pending_capture
             capturer = RoutedExpertsCapturer.get_instance()
             if capturer is not None:
-                capturer.capture(0, capture_values)
+                if self._binary_selection_capture:
+                    encoded = capture_values[:, 0].long()
+                    layer_count = int(capturer._device_buffer.shape[1])
+                    if layer_count < 33:
+                        raise ValueError("Qwen3 selection capture requires at least 33 decoder layers")
+                    for bit in range(16):
+                        capturer.capture(bit, encoded.bitwise_right_shift(bit).bitwise_and(1)[:, None])
+                        capturer.capture(
+                            16 + bit,
+                            capture_counts.long().bitwise_right_shift(bit).bitwise_and(1)[:, None],
+                        )
+                    # The final layer distinguishes the binary Qwen3 layout
+                    # from legacy layer-0 integer values.  The middle bits
+                    # carry the original visual-token count, so replay does
+                    # not depend on model-specific processor grid formulas.
+                    capturer.capture(layer_count - 1, encoded.gt(0).to(torch.int32)[:, None])
+                else:
+                    capturer.capture(0, capture_values)
         return super().forward(
             input_ids=input_ids,
             positions=positions,
@@ -178,6 +220,12 @@ class _PruningMixin:
                 positions = torch.cat([positions, torch.zeros_like(positions[:, :1])], dim=1)
 
             metadata = encode_embedding_selection_metadata(kept_indices, dtype=embeddings.dtype)
+            if self._binary_selection_capture:
+                original_count_metadata = encode_embedding_selection_metadata(
+                    kept_indices.new_full((len(kept_indices),), len(embeddings) - 1),
+                    dtype=embeddings.dtype,
+                )
+                metadata = torch.cat((metadata, original_count_metadata), dim=1)
             output.append(torch.cat([embeddings[kept_indices], positions[kept_indices], metadata], dim=1))
         return tuple(output)
 
@@ -208,6 +256,7 @@ class VerlPrunedQwen3VLForConditionalGeneration(
     Qwen3VLForConditionalGeneration,
 ):
     _append_zero_position_axis = True
+    _binary_selection_capture = True
 
     def _postprocess_image_embeds_evs(self, image_embeds_split, image_input):
         return self._prune_and_annotate_images(

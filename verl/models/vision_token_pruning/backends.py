@@ -46,6 +46,7 @@ LAYERWISE_FLEX_BACKEND = VllmPruningBackendProfile(
     name="layerwise_flex",
     architectures={
         "qwen2_5_vl": "VerlLayerwiseFlexPrunedQwen2_5VLForConditionalGeneration",
+        "qwen3_vl": "VerlLayerwiseFlexPrunedQwen3VLForConditionalGeneration",
     },
     requires_eager=True,
     supports_chunked_prefill=False,

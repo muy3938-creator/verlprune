@@ -39,6 +39,7 @@ def test_real_vllm_mrope_helper_physically_gathers_selected_embeddings(qwen3):
             seed=1234,
         ),
         _append_zero_position_axis=qwen3,
+        _binary_selection_capture=qwen3,
     )
     embeddings = torch.arange(32, dtype=torch.float32).reshape(4, 8)
     image_grid_thw = torch.tensor([[1, 4, 4]])
@@ -48,7 +49,7 @@ def test_real_vllm_mrope_helper_physically_gathers_selected_embeddings(qwen3):
         (embeddings,),
         image_grid_thw,
     )
-    encoded = annotated[:, -2:].long()
+    encoded = annotated[:, -4:-2].long() if qwen3 else annotated[:, -2:].long()
     kept_indices = encoded[:, 0] + encoded[:, 1] * 256 - 1
 
     assert annotated.shape[0] == 2

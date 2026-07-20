@@ -48,8 +48,9 @@ def compute_selector_fingerprint(selector: str, selector_kwargs: Mapping[str, An
 class VisionTokenPruningConfig:
     """Backend-neutral visual-token pruning configuration.
 
-    ``prune_after_layer=-1`` keeps the validated layer-0 physical-pruning
-    baseline. Non-negative values select the experimental layerwise
+    ``prune_after_layer=-1`` selects from visual embeddings immediately before
+    decoder layer 0. The physically compacted prompt and decode share the same
+    reduced KV cache. Non-negative values select the experimental layerwise
     Attention/KV implementation and apply pruning starting at the next layer.
     ``selector`` names the rollout-side algorithm; the actor only replays the
     resulting indices and therefore stays independent of that algorithm.
@@ -61,7 +62,7 @@ class VisionTokenPruningConfig:
     layerwise_backend: str = "flex"
     pre_pruning_backend: str = "flex"
     selector_input: str = "vision_embedding"
-    selector: str = "random"
+    selector: str = "embedding_norm"
     selector_kwargs: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -176,8 +177,14 @@ class VisionTokenPruningConfig:
     @property
     def backend_name(self) -> str:
         if not self.uses_layerwise_backend:
-            return "physical"
+            return "prefill_physical_shared_kv"
         return f"layerwise_{self.layerwise_backend}"
+
+    @property
+    def selection_layer(self) -> int:
+        """User-facing boundary; zero means immediately before decoder layer 0."""
+
+        return 0 if not self.uses_layerwise_backend else self.prune_after_layer
 
     @property
     def selector_fingerprint(self) -> str:

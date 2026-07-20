@@ -18,7 +18,8 @@ The implementation adds a layer-0 visual-token pruning baseline to Vision-OPD:
   before its remove-padding/FlashAttention forward.
 - The OPD teacher reuses the current actor weights but receives the complete
   image and explicitly bypasses pruning.
-- The final visual token is always retained as the MRoPE anchor.
+- Any sorted valid visual-token subset can be retained; no fixed final-token
+  anchor is required.
 
 The first version deliberately supports one image per request, no video, and
 Qwen2.5-VL/Qwen3-VL at decoder layer 0.
@@ -44,7 +45,7 @@ Qwen2.5-VL/Qwen3-VL at decoder layer 0.
 - Reused vLLM's routed-expert return channel to transport compact, positive,
   one-based retained indices back to VerL.
 - Added validation for model type, image count, keep ratio, prompt expansion,
-  MRoPE anchor retention, and metadata shape.
+  arbitrary-subset replay, and metadata shape.
 - Fixed the async server so an explicit `max_model_len` is not overwritten by
   the checkpoint's advertised context length.
 

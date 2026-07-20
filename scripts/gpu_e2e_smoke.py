@@ -95,6 +95,7 @@ def run_rollout(
     os.environ.setdefault("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
     os.environ.setdefault("VLLM_PLUGINS", "vision_opd_token_pruning")
     from vllm import LLM, SamplingParams
+    from transformers import AutoConfig
 
     from verl.models.vision_token_pruning.config import VisionTokenPruningConfig
     from verl.models.vision_token_pruning.transport import (
@@ -106,14 +107,25 @@ def run_rollout(
     image_path = output_dir / "shapes.png"
     image = _make_image(image_path, resolution)
 
+    model_type = AutoConfig.from_pretrained(model_path).model_type
     layerwise = prune_after_layer >= 0
-    architecture = "VerlPrunedQwen2_5VLForConditionalGeneration"
+    architectures = {
+        "qwen2_5_vl": "VerlPrunedQwen2_5VLForConditionalGeneration",
+        "qwen3_vl": "VerlPrunedQwen3VLForConditionalGeneration",
+    }
+    architecture = architectures[model_type]
     if layerwise:
-        architecture = (
-            "VerlLayerwiseFlexPrunedQwen2_5VLForConditionalGeneration"
-            if layerwise_backend == "flex"
-            else "VerlLayerwisePrunedQwen2_5VLForConditionalGeneration"
-        )
+        layerwise_architectures = {
+            ("qwen2_5_vl", "flex"): "VerlLayerwiseFlexPrunedQwen2_5VLForConditionalGeneration",
+            ("qwen2_5_vl", "compact_flash"): "VerlLayerwisePrunedQwen2_5VLForConditionalGeneration",
+            ("qwen3_vl", "flex"): "VerlLayerwiseFlexPrunedQwen3VLForConditionalGeneration",
+        }
+        try:
+            architecture = layerwise_architectures[(model_type, layerwise_backend)]
+        except KeyError as exc:
+            raise ValueError(
+                f"unsupported layerwise backend {layerwise_backend!r} for {model_type!r}"
+            ) from exc
     pruning_config = VisionTokenPruningConfig(
         enabled=True,
         keep_ratio=keep_ratio,
@@ -124,6 +136,12 @@ def run_rollout(
         pre_pruning_backend=pre_pruning_backend,
         selector_input=selector_input,
     ).to_backend_payload()
+    scheduler_token_budget = max(512, batch_size * (resolution * resolution // 196 + 128))
+    if model_type == "qwen3_vl":
+        # vLLM 0.18's Qwen3-VL multimodal encoder requires its default
+        # scheduler budget even for short prompts; smaller values terminate
+        # the engine during the first image request.
+        scheduler_token_budget = max(16384, scheduler_token_budget)
 
     llm_kwargs = dict(
         model=model_path,
@@ -133,7 +151,7 @@ def run_rollout(
         # The prompt used here is about 100 tokens after visual expansion.
         # Scale the scheduler budget so batch-size stress tests are genuine
         # concurrent prefills rather than silently split by a 512-token cap.
-        max_num_batched_tokens=max(512, batch_size * (resolution * resolution // 196 + 128)),
+        max_num_batched_tokens=scheduler_token_budget,
         gpu_memory_utilization=gpu_memory_utilization,
         kv_cache_memory_bytes=128 * 1024 * 1024,
         enforce_eager=True,
@@ -158,7 +176,10 @@ def run_rollout(
 
     from transformers import AutoProcessor
 
-    processor = AutoProcessor.from_pretrained(model_path, use_fast=False)
+    # Match verl's production hf_processor and vLLM multimodal preprocessing.
+    # Qwen3-VL fast and slow image processors choose different grids for the
+    # same 224px input (64 versus 49 merged visual tokens).
+    processor = AutoProcessor.from_pretrained(model_path)
     messages = [
         {
             "role": "user",
@@ -174,8 +195,15 @@ def run_rollout(
     prompt = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     processed = processor(text=[prompt], images=[image], return_tensors="pt")
     grid = processed["image_grid_thw"][0].tolist()
-    merge_size = int(processor.image_processor.merge_size)
-    original_visual_tokens = int(grid[0] * grid[1] * grid[2] // (merge_size**2))
+    image_token_id = getattr(
+        processor,
+        "image_token_id",
+        processor.tokenizer.convert_tokens_to_ids("<|image_pad|>"),
+    )
+    # Count the expanded placeholders that the decoder actually consumes.
+    # Qwen3-VL's processor can expand a grid differently from Qwen2.5-VL, so
+    # deriving this value from grid_thw is not a portable model invariant.
+    original_visual_tokens = int(processed["input_ids"].eq(image_token_id).sum())
 
     requests = [
         {"prompt": prompt, "multi_modal_data": {"image": image}}
@@ -229,7 +257,10 @@ def run_rollout(
                 selector=selector,
                 selector_kwargs=selector_kwargs,
             )
-            selection_summary = f"visual_tokens={original_visual_tokens}->{len(selection.kept_visual_indices)}"
+            selection_summary = (
+                f"visual_tokens={selection.original_visual_token_count}"
+                f"->{len(selection.kept_visual_indices)}"
+            )
         decoded_results.append((result, selection))
         print(
             f"request={request_index} generated_tokens={len(result.token_ids)} "
@@ -277,7 +308,10 @@ def run_rollout(
         print(f"dynamic_keep_counts={[len(indices) for indices in active_rows]}")
         print(f"first_dynamic_indices={list(active_rows[0]) if active_rows else []}")
     else:
-        print(f"visual_tokens={original_visual_tokens}->{len(selection.kept_visual_indices)}")
+        print(
+            f"visual_tokens={selection.original_visual_token_count}"
+            f"->{len(selection.kept_visual_indices)}"
+        )
     print(f"prune_after_layer={prune_after_layer}")
     print(f"selector={selector}")
     print(f"selector_kwargs={selector_kwargs}")
@@ -333,10 +367,9 @@ def _distillation_loss(student_logits, teacher_logits, response_ids):
 def run_train_step(output_dir: Path, learning_rate: float, steps: int) -> None:
     import torch
     from PIL import Image
-    from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
+    from transformers import AutoConfig, AutoModelForImageTextToText, AutoProcessor
 
     from verl.models.transformers.monkey_patch import apply_monkey_patch
-    from verl.models.transformers.qwen2_vl import get_rope_index
     from verl.models.vision_token_pruning.protocol import (
         DynamicVisionTokenSelection,
         VisionTokenSelection,
@@ -353,8 +386,15 @@ def run_train_step(output_dir: Path, learning_rate: float, steps: int) -> None:
     prune_after_layer = int(record.get("prune_after_layer", -1))
     layerwise = prune_after_layer >= 0
     model_path = record["model_path"]
+    model_type = AutoConfig.from_pretrained(model_path).model_type
+    if model_type == "qwen3_vl":
+        from verl.models.transformers.qwen3_vl import get_rope_index
+    elif model_type == "qwen2_5_vl":
+        from verl.models.transformers.qwen2_vl import get_rope_index
+    else:
+        raise ValueError(f"unsupported smoke model type {model_type!r}")
     image = Image.open(record["image_path"]).convert("RGB")
-    processor = AutoProcessor.from_pretrained(model_path, use_fast=False)
+    processor = AutoProcessor.from_pretrained(model_path)
     prompt_inputs = processor(text=[record["prompt"]], images=[image], return_tensors="pt")
     prompt_ids = prompt_inputs["input_ids"]
     response_ids = torch.tensor([record["generated_token_ids"]], dtype=prompt_ids.dtype)
@@ -365,7 +405,11 @@ def run_train_step(output_dir: Path, learning_rate: float, steps: int) -> None:
 
     selection = selection_from_wire(record["selection"])
     multimodal_inputs = attach_selection_to_multi_modal_inputs({}, selection.to_wire())
-    image_token_id = processor.tokenizer.convert_tokens_to_ids("<|image_pad|>")
+    image_token_id = getattr(
+        processor,
+        "image_token_id",
+        processor.tokenizer.convert_tokens_to_ids("<|image_pad|>"),
+    )
     dynamic = isinstance(selection, DynamicVisionTokenSelection)
     if dynamic:
         dynamic_attention_mask = replay_dynamic_rollout_selection(
@@ -406,7 +450,7 @@ def run_train_step(output_dir: Path, learning_rate: float, steps: int) -> None:
         teacher_position_ids if layerwise else full_position_ids[:, compact_keep].unsqueeze(1)
     )
 
-    model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+    model = AutoModelForImageTextToText.from_pretrained(
         model_path,
         dtype=torch.bfloat16,
         attn_implementation="flash_attention_2",
@@ -580,7 +624,7 @@ def main() -> None:
     parser.add_argument("--model", default="Qwen/Qwen2.5-VL-3B-Instruct")
     parser.add_argument("--output-dir", type=Path, default=Path("/tmp/opd_e2e"))
     parser.add_argument("--keep-ratio", type=float, default=0.5)
-    parser.add_argument("--selector", default="random")
+    parser.add_argument("--selector", default="embedding_norm")
     parser.add_argument("--selector-kwargs", type=json.loads, default={})
     parser.add_argument("--prune-after-layer", type=int, default=-1)
     parser.add_argument("--layerwise-backend", choices=("flex", "compact_flash"), default="flex")

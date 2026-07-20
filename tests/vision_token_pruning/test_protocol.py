@@ -50,13 +50,14 @@ def test_selection_requires_sorted_unique_indices():
         )
 
 
-def test_selection_requires_final_mrope_anchor():
-    with pytest.raises(ValueError, match="MRoPE anchor"):
-        VisionTokenSelection(
-            keep_ratio=0.5,
-            original_visual_token_count=4,
-            kept_visual_indices=(0, 2),
-        )
+def test_selection_allows_dropping_the_final_visual_token():
+    selection = VisionTokenSelection(
+        keep_ratio=0.5,
+        original_visual_token_count=4,
+        kept_visual_indices=(0, 2),
+    )
+
+    assert selection.kept_visual_indices == (0, 2)
 
 
 def test_decode_vllm_metadata():

@@ -99,7 +99,9 @@ is retained, then candidates whose cosine similarity to it is above `tau` are
 suppressed. The process repeats until K tokens are selected or candidates are
 exhausted.
 
-Qwen2.5-VL's final visual token is also an MRoPE anchor and must be retained.
+The current platform accepts any sorted valid subset and does not force the
+final visual token. MRoPE coordinates are gathered for exactly the chosen
+indices, which is also compatible with dense Qwen3-VL.
 If threshold suppression empties the set before exact K, this implementation
 deterministically fills from the original saliency order. That keeps retention
 ratios comparable across methods.

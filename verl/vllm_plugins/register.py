@@ -17,6 +17,11 @@ def register_vision_token_pruning_models() -> None:
         "VerlLayerwiseFlexPrunedQwen2_5VLForConditionalGeneration",
     )
     ModelRegistry.register_model(
+        "VerlLayerwiseFlexPrunedQwen3VLForConditionalGeneration",
+        "verl.vllm_plugins.layerwise_flex_vision_token_pruning:"
+        "VerlLayerwiseFlexPrunedQwen3VLForConditionalGeneration",
+    )
+    ModelRegistry.register_model(
         "VerlLayerwisePrunedQwen2_5VLForConditionalGeneration",
         "verl.vllm_plugins.layerwise_vision_token_pruning:"
         "VerlLayerwisePrunedQwen2_5VLForConditionalGeneration",

@@ -102,10 +102,13 @@ Key hyperparameters can be edited at the top of the script. See the script for t
 
 #### Selector-driven visual-token pruning
 
-The baseline physically retains a selected subset of Qwen2.5-VL or Qwen3-VL image tokens before decoder layer 0. The
-final visual token is always retained as the MRoPE anchor. vLLM returns the exact retained indices with each rollout;
-the actor reuses those indices to remove the same image tokens before its FlashAttention varlen forward. The OPD
-teacher remains unpruned.
+The default baseline scores visual encoder embeddings before decoder layer 0,
+retains 50% by L2 norm, and physically compacts the prompt. Every decoder layer
+therefore writes only the retained visual KV entries, and decode automatically
+reuses that same reduced cache. No particular visual token (including the last
+one) is mandatory. vLLM returns the exact retained indices with each rollout;
+the actor reuses those indices before its FlashAttention varlen forward. The
+OPD teacher remains unpruned.
 
 The milestone entry point keeps the complete training preset in Hydra and
 exposes the experiment choices directly:
@@ -113,7 +116,7 @@ exposes the experiment choices directly:
 ```bash
 MODEL_PATH=/path/to/Qwen2.5-VL-3B-Instruct \
 TRAIN_FILE=/path/to/train.parquet \
-KEEP_RATIO=0.5 SELECTOR=random PRUNE_AFTER_LAYER=-1 \
+KEEP_RATIO=0.5 SELECTOR=embedding_norm PRUNE_AFTER_LAYER=-1 \
 bash scripts/run_vision_pruning_experiment.sh
 ```
 
@@ -139,7 +142,7 @@ without the training-only selection return channel:
 
 ```bash
 vllm serve /path/to/merged-checkpoint \
-    --hf-overrides '{"architectures":["VerlPrunedQwen2_5VLForConditionalGeneration"],"vision_token_pruning":{"keep_ratio":0.5,"selector":"random"}}' \
+    --hf-overrides '{"architectures":["VerlPrunedQwen2_5VLForConditionalGeneration"],"vision_token_pruning":{"keep_ratio":0.5,"selector":"embedding_norm"}}' \
     --video-pruning-rate 0.5 \
     --limit-mm-per-prompt '{"image":1,"video":0}'
 ```
@@ -149,10 +152,14 @@ For Qwen3-VL, replace the architecture with `VerlPrunedQwen3VLForConditionalGene
 `1 - keep_ratio`.
 
 The actor only replays rollout indices, so new algorithms do not change the
-training path. A selector can be a built-in name (`random`, `uniform`) or an
+training path. A selector can be a built-in name (`embedding_norm`, `random`,
+`uniform`, `key_norm`, `dart`, `divprune`, or `greedy_prune`) or an
 installed request-based `module:function` callable with `selector_kwargs`. See
 `docs/vision-pruning-experiment-platform.md` for the API, migration notes,
 backend decision, constraints, and acceptance gates.
+The dense Qwen3-VL-4B layer-0 rollout, actor parity, and three-step training
+results are recorded in
+`docs/qwen3-layer0-embedding-pruning-validation.md`.
 
 ### 3. Merge Checkpoints
 

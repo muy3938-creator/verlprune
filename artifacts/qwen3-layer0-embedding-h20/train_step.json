@@ -1,0 +1,15 @@
+{
+  "full_sequence_tokens": 96,
+  "student_sequence_tokens": 64,
+  "full_visual_tokens": 64,
+  "student_visual_tokens": 32,
+  "response_tokens": 8,
+  "training_steps": 3,
+  "step_losses": [0.00028286941233091056, 0.00028285448206588626, 0.000282854336546734],
+  "step_grad_norms": [0.0223388671875, 0.0223388671875, 0.0223388671875],
+  "mean_train_step_s": 0.13579104468226433,
+  "cuda_peak_allocated_mib": 8813.162109375,
+  "parameter_delta_norm": 0.045242633670568466,
+  "attention_backend": "flash_attention_2",
+  "status": "PASS"
+}

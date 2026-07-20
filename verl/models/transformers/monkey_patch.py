@@ -437,6 +437,14 @@ def apply_monkey_patch(
         if model.config.model_type == "qwen3_vl_moe" and is_transformers_version_in_range(max_version="4.57.3"):
             patch_qwen3_vl_moe_sparse_moe_block_forward()
 
+        if use_remove_padding and model.config.model_type == "qwen3_vl":
+            from transformers.models.qwen3_vl.modeling_qwen3_vl import Qwen3VLTextAttention
+
+            from verl.models.transformers.qwen3_vl import qwen3_vl_attn_forward
+
+            Qwen3VLTextAttention.forward = qwen3_vl_attn_forward
+            print(f"Monkey patch {model.__class__.__name__} attention layer")
+
         # Step 2: patch input for multimodal sequence parallelism
         if ulysses_sp_size > 1:
             patch_vlm_for_ulysses_input_slicing(Qwen3VLTextModel)

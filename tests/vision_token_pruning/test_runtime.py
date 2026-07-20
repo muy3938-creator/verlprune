@@ -138,11 +138,13 @@ def test_layerwise_actor_keeps_full_input_and_builds_post_boundary_mask():
     selections = [
         VisionTokenSelection(
             keep_ratio=0.5,
+            selector="embedding_norm",
             original_visual_token_count=4,
             kept_visual_indices=(0, 3),
         ),
         VisionTokenSelection(
             keep_ratio=0.5,
+            selector="embedding_norm",
             original_visual_token_count=2,
             kept_visual_indices=(1,),
         ),
@@ -174,6 +176,7 @@ def test_layerwise_actor_keeps_full_input_and_builds_post_boundary_mask():
 def test_explicit_none_suppresses_prepared_layerwise_mask():
     selection = VisionTokenSelection(
         keep_ratio=0.5,
+        selector="embedding_norm",
         original_visual_token_count=2,
         kept_visual_indices=(1,),
     )

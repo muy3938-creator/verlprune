@@ -63,8 +63,6 @@ class VisionTokenSelection:
             raise ValueError("kept_visual_indices must be sorted and unique")
         if self.kept_visual_indices[0] < 0 or self.kept_visual_indices[-1] >= self.original_visual_token_count:
             raise ValueError("kept_visual_indices contains an out of range index")
-        if self.kept_visual_indices[-1] != self.original_visual_token_count - 1:
-            raise ValueError("the final visual token must be retained as the MRoPE anchor")
 
     def to_wire(self) -> dict[str, Any]:
         return {

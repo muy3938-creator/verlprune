@@ -72,9 +72,8 @@ from verl.models.vision_token_pruning.strategy import VisionTokenSelectionReques
 
 def select_tokens(request: VisionTokenSelectionRequest) -> torch.Tensor:
     strength = float(request.options.get("strength", 1.0))
-    scores = request.features[:-1].float().norm(dim=1) * strength
-    chosen = scores.topk(request.keep_count - 1).indices.sort().values
-    return torch.cat([chosen, chosen.new_tensor([request.token_count - 1])])
+    scores = request.features.float().norm(dim=1) * strength
+    return scores.topk(request.keep_count).indices.sort().values
 ```
 
 Configure it as `my_package.my_module:select_tokens` and pass JSON-compatible
@@ -88,7 +87,7 @@ The output contract is enforced centrally:
 - exactly `round(token_count * keep_ratio)` indices, with a minimum of one;
 - rank-1 integer tensor on the requested device;
 - sorted, unique, in range;
-- the final visual token is retained as the MRoPE anchor.
+- no fixed anchor token is required; any sorted valid subset is accepted.
 
 The old flat two-argument selector functions and public names in `selectors.py`
 remain compatibility wrappers. Existing `module:function` selectors continue
@@ -108,8 +107,8 @@ Run the stable physical backend:
 ```bash
 MODEL_PATH=/root/models/Qwen2.5-VL-3B-Instruct \
 TRAIN_FILE=/root/opd-smoke-data/train.parquet \
-OUTPUT_DIR=/root/physical-random \
-KEEP_RATIO=0.5 SELECTOR=random PRUNE_AFTER_LAYER=-1 \
+OUTPUT_DIR=/root/physical-embedding-norm \
+KEEP_RATIO=0.5 SELECTOR=embedding_norm PRUNE_AFTER_LAYER=-1 \
 TOTAL_TRAINING_STEPS=3 RESUME_MODE=disable \
 bash scripts/run_vision_pruning_experiment.sh
 ```

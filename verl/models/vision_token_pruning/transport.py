@@ -54,7 +54,29 @@ def decode_vllm_selection_capture(
     if values is None:
         raise ValueError("vLLM visual-token pruning plugin did not return selection metadata")
     try:
-        encoded = [int(token_layers[0][0]) for token_layers in values]
+        binary_transport = any(
+            len(token_layers) > 1 and int(token_layers[-1][0]) > 0
+            for token_layers in values
+        )
+        if binary_transport:
+            if any(len(token_layers) < 33 for token_layers in values):
+                raise ValueError("binary vLLM selection capture requires at least 33 layers")
+            encoded = [
+                sum(int(token_layers[bit][0]) << bit for bit in range(16))
+                if int(token_layers[-1][0]) > 0
+                else 0
+                for token_layers in values
+            ]
+            original_counts = {
+                sum(int(token_layers[16 + bit][0]) << bit for bit in range(16))
+                for token_layers in values
+                if int(token_layers[-1][0]) > 0
+            }
+            if len(original_counts) != 1 or next(iter(original_counts)) <= 0:
+                raise ValueError("binary vLLM selection capture has inconsistent token counts")
+            original_visual_token_count = next(iter(original_counts))
+        else:
+            encoded = [int(token_layers[0][0]) for token_layers in values]
     except (IndexError, TypeError) as exc:
         raise ValueError("invalid vLLM selection capture shape") from exc
     kept_indices = tuple(sorted({value - 1 for value in encoded if value > 0}))

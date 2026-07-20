@@ -7,12 +7,13 @@ from verl.models.vision_token_pruning.config import (
 )
 
 
-def test_enabled_config_defaults_to_layer0_random_pruning():
+def test_enabled_config_defaults_to_layer0_embedding_pruning():
     config = VisionTokenPruningConfig(enabled=True, keep_ratio=0.25)
 
     assert config.keep_ratio == 0.25
     assert config.prune_after_layer == -1
-    assert config.selector == "random"
+    assert config.selector == "embedding_norm"
+    assert config.selection_layer == 0
     assert config.uses_layerwise_backend is False
     assert not hasattr(config, "method")
     assert not hasattr(config, "mode")
@@ -79,7 +80,10 @@ def test_selector_kwargs_reject_non_finite_json_values():
 
 
 def test_backend_profile_is_explicit():
-    assert VisionTokenPruningConfig(enabled=True, keep_ratio=0.5).backend_name == "physical"
+    assert (
+        VisionTokenPruningConfig(enabled=True, keep_ratio=0.5).backend_name
+        == "prefill_physical_shared_kv"
+    )
     assert (
         VisionTokenPruningConfig(
             enabled=True,

@@ -72,7 +72,7 @@ def run_rollout(
     os.environ.setdefault("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
     os.environ.setdefault("VLLM_PLUGINS", "vision_opd_token_pruning")
 
-    from transformers import AutoProcessor
+    from transformers import AutoConfig, AutoProcessor
     from vllm import LLM, SamplingParams
 
     from verl.models.vision_token_pruning.config import VisionTokenPruningConfig
@@ -89,7 +89,8 @@ def run_rollout(
         raise ValueError("plugin no-prune diagnostics require a static selector")
     effective_keep_ratio = 1.0 - 1e-9 if plugin_no_prune else keep_ratio
     output_dir.mkdir(parents=True, exist_ok=True)
-    processor = AutoProcessor.from_pretrained(model_path, use_fast=False)
+    model_type = AutoConfig.from_pretrained(model_path).model_type
+    processor = AutoProcessor.from_pretrained(model_path)
     prompt = _prompt(processor)
     image_paths = []
     images = []
@@ -114,15 +115,20 @@ def run_rollout(
     )
     processed = processor(text=[prompt], images=[images[0]], return_tensors="pt")
     grid = processed["image_grid_thw"][0].tolist()
-    merge_size = int(processor.image_processor.merge_size)
-    original_visual_tokens = int(grid[0] * grid[1] * grid[2] // (merge_size**2))
+    image_token_id = getattr(
+        processor,
+        "image_token_id",
+        processor.tokenizer.convert_tokens_to_ids("<|image_pad|>"),
+    )
+    original_visual_tokens = int(processed["input_ids"].eq(image_token_id).sum())
+    layerwise = prune_after_layer >= 0
 
     llm_kwargs = dict(
         model=model_path,
         dtype="bfloat16",
         max_model_len=512,
         max_num_seqs=batch_size,
-        max_num_batched_tokens=max(512, batch_size * 160),
+        max_num_batched_tokens=(16384 if model_type == "qwen3_vl" else max(512, batch_size * 160)),
         gpu_memory_utilization=gpu_memory_utilization,
         kv_cache_memory_bytes=256 * 1024 * 1024,
         enforce_eager=True,
@@ -132,13 +138,22 @@ def run_rollout(
     if baseline_unpruned:
         llm_kwargs["enable_chunked_prefill"] = False
     else:
+        physical_architectures = {
+            "qwen2_5_vl": "VerlPrunedQwen2_5VLForConditionalGeneration",
+            "qwen3_vl": "VerlPrunedQwen3VLForConditionalGeneration",
+        }
+        layerwise_architectures = {
+            "qwen2_5_vl": "VerlLayerwiseFlexPrunedQwen2_5VLForConditionalGeneration",
+            "qwen3_vl": "VerlLayerwiseFlexPrunedQwen3VLForConditionalGeneration",
+        }
         llm_kwargs.update(
             enable_return_routed_experts=True,
             video_pruning_rate=1.0 - effective_keep_ratio,
-            enable_chunked_prefill=False,
-            attention_config={"backend": "FLEX_ATTENTION"},
+            enable_chunked_prefill=not layerwise,
             hf_overrides={
-                "architectures": ["VerlLayerwiseFlexPrunedQwen2_5VLForConditionalGeneration"],
+                "architectures": [
+                    (layerwise_architectures if layerwise else physical_architectures)[model_type]
+                ],
                 "text_config": {
                     "num_experts_per_tok": int(selector_kwargs.get("capture_capacity", 64))
                     if selector_input == "decode_query"
@@ -147,6 +162,8 @@ def run_rollout(
                 "vision_token_pruning": pruning_config.to_backend_payload(),
             },
         )
+        if layerwise:
+            llm_kwargs["attention_config"] = {"backend": "FLEX_ATTENTION"}
     llm = LLM(
         **llm_kwargs,
     )
@@ -270,7 +287,10 @@ def _build_actor_batch(reference: dict, processor, device):
     import torch
     from PIL import Image
 
-    from verl.models.transformers.qwen2_vl import get_rope_index
+    if processor.config.model_type == "qwen3_vl":
+        from verl.models.transformers.qwen3_vl import get_rope_index
+    else:
+        from verl.models.transformers.qwen2_vl import get_rope_index
     from verl.models.vision_token_pruning.training import attach_selection_to_multi_modal_inputs
 
     input_ids = []
@@ -324,7 +344,7 @@ def _build_actor_batch(reference: dict, processor, device):
 
 def run_actor(case_dirs: list[Path]) -> None:
     import torch
-    from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
+    from transformers import AutoConfig, AutoModelForImageTextToText, AutoProcessor
 
     from verl.models.transformers.monkey_patch import apply_monkey_patch
     from verl.models.vision_token_pruning.config import VisionTokenPruningConfig
@@ -337,8 +357,9 @@ def run_actor(case_dirs: list[Path]) -> None:
     if len(model_paths) != 1:
         raise ValueError("all actor cases must use the same model")
     model_path = next(iter(model_paths))
-    processor = AutoProcessor.from_pretrained(model_path, use_fast=False)
-    model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+    processor = AutoProcessor.from_pretrained(model_path)
+    processor.config = AutoConfig.from_pretrained(model_path)
+    model = AutoModelForImageTextToText.from_pretrained(
         model_path,
         dtype=torch.bfloat16,
         attn_implementation="flash_attention_2",

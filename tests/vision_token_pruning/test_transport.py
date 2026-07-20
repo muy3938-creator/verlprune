@@ -5,6 +5,7 @@ torch = pytest.importorskip("torch")
 from verl.models.vision_token_pruning.transport import (  # noqa: E402
     decode_embedding_selection_metadata,
     decode_vllm_dynamic_selection_capture,
+    decode_vllm_selection_capture,
     encode_embedding_selection_metadata,
 )
 
@@ -35,3 +36,31 @@ def test_dynamic_capture_preserves_per_query_rows_and_variable_budgets():
     )
 
     assert selection.query_kept_visual_indices == ((), (0, 3), (1, 2, 3))
+
+
+def test_static_binary_capture_uses_only_zero_one_values_and_round_trips_indices():
+    def binary_row(index: int | None, original_count: int = 4) -> list[list[int]]:
+        row = [[0] for _ in range(36)]
+        if index is not None:
+            encoded = index + 1
+            for bit in range(16):
+                row[bit][0] = (encoded >> bit) & 1
+                row[16 + bit][0] = (original_count >> bit) & 1
+            row[-1][0] = 1
+        return row
+
+    selection = decode_vllm_selection_capture(
+        [
+            binary_row(0),
+            binary_row(None),
+            binary_row(2),
+        ],
+        keep_ratio=0.5,
+        # The binary Qwen3 payload is authoritative; this deliberately models
+        # a processor-side estimate that differs from vLLM's image expansion.
+        original_visual_token_count=3,
+        selector="uniform",
+    )
+
+    assert selection.original_visual_token_count == 4
+    assert selection.kept_visual_indices == (0, 2)

@@ -34,7 +34,7 @@ def test_request_strategy_receives_options_and_features_by_module_path():
         request,
     )
 
-    assert selected.tolist() == [2, 3, 4]
+    assert selected.tolist() == [1, 2, 3]
 
 
 def test_selection_engine_owns_deterministic_per_request_seeds():
@@ -69,7 +69,7 @@ def test_legacy_module_strategy_remains_compatible():
     assert selected.tolist() == [0, 2, 5]
 
 
-def test_decoder_key_norm_strategy_uses_layer_state_and_keeps_anchor():
+def test_decoder_key_norm_strategy_uses_layer_state_without_forced_anchor():
     config = VisionTokenPruningConfig(
         enabled=True,
         keep_ratio=0.5,
@@ -87,7 +87,6 @@ def test_decoder_key_norm_strategy_uses_layer_state_and_keeps_anchor():
         layer_index=15,
     )
 
-    # The final token is always the MRoPE anchor, not a score competitor.
     assert selected.tolist() == [1, 3]
     assert engine.selection_count == 1
 
@@ -119,9 +118,9 @@ def test_divprune_matches_manual_max_min_diversity_fixture():
         ),
     )
 
-    # Token 3 has the largest nearest-neighbour distance; token 0 is then
-    # farthest from it. Token 4 is the platform's mandatory MRoPE anchor.
-    assert selected.tolist() == [0, 3, 4]
+    # Token 3 has the largest nearest-neighbour distance; tokens 0 and 2 then
+    # maximize diversity from the selected set.
+    assert selected.tolist() == [0, 2, 3]
 
 
 def test_dart_uses_key_norm_pivot_then_keeps_its_farthest_duplicate_candidate():
@@ -147,7 +146,7 @@ def test_dart_uses_key_norm_pivot_then_keeps_its_farthest_duplicate_candidate():
         ),
     )
 
-    assert selected.tolist() == [0, 1, 5]
+    assert selected.tolist() == [0, 1, 2]
 
 
 def test_greedy_prune_combines_last_text_saliency_with_redundancy_suppression():
@@ -169,5 +168,5 @@ def test_greedy_prune_combines_last_text_saliency_with_redundancy_suppression():
     )
 
     # Token 1 is more than 0.9-similar to the most salient token 0, so the
-    # next selected semantic region is token 2. Token 4 is the anchor.
+    # next selected semantic regions are tokens 2 and 4.
     assert selected.tolist() == [0, 2, 4]

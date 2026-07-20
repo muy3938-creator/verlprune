@@ -10,30 +10,35 @@ from verl.models.vision_token_pruning.selectors import (  # noqa: E402
 )
 
 
-def test_random_selector_is_seedable_sorted_and_keeps_mrope_anchor():
+def test_random_selector_is_seedable_sorted_and_has_no_forced_anchor():
     first = select_random_visual_tokens(
         8,
         4,
         device=torch.device("cpu"),
-        generator=torch.Generator().manual_seed(7),
+        generator=torch.Generator().manual_seed(1),
     )
     second = select_random_visual_tokens(
         8,
         4,
         device=torch.device("cpu"),
-        generator=torch.Generator().manual_seed(7),
+        generator=torch.Generator().manual_seed(1),
     )
 
     assert torch.equal(first, second)
     assert first.tolist() == sorted(first.tolist())
     assert len(first) == 4
-    assert first[-1].item() == 7
+    assert 7 not in first.tolist()
 
 
-def test_single_retained_token_is_mrope_anchor():
-    selected = select_random_visual_tokens(5, 1, device=torch.device("cpu"))
+def test_single_retained_token_is_sampled_without_a_forced_position():
+    selected = select_random_visual_tokens(
+        5,
+        1,
+        device=torch.device("cpu"),
+        generator=torch.Generator().manual_seed(7),
+    )
 
-    assert selected.tolist() == [4]
+    assert len(selected) == 1
 
 
 def test_builtin_uniform_selector_is_available_and_validated():
@@ -71,14 +76,15 @@ def test_custom_selector_receives_features_and_grid_without_actor_changes():
     assert observed["grid_thw"] == [1, 4, 6]
 
 
-def test_selector_output_contract_rejects_missing_anchor():
+def test_selector_output_contract_accepts_any_valid_subset():
     register_vision_token_selector(
         "test_bad_anchor",
         lambda token_count, keep_count, *, device, **_: torch.arange(keep_count, device=device),
     )
 
-    with pytest.raises(ValueError, match="MRoPE anchor"):
-        select_visual_tokens("test_bad_anchor", 8, 4, device=torch.device("cpu"))
+    selected = select_visual_tokens("test_bad_anchor", 8, 4, device=torch.device("cpu"))
+
+    assert selected.tolist() == [0, 1, 2, 3]
 
 
 def test_selector_can_be_loaded_by_dotted_path_for_vllm_workers():

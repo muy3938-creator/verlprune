@@ -27,6 +27,12 @@ from vllm.model_executor.models.qwen2_5_vl import (
     Qwen2_5_VLMultiModalProcessor,
     Qwen2_5_VLProcessingInfo,
 )
+from vllm.model_executor.models.qwen3_vl import (
+    Qwen3VLDummyInputsBuilder,
+    Qwen3VLForConditionalGeneration,
+    Qwen3VLMultiModalProcessor,
+    Qwen3VLProcessingInfo,
+)
 from vllm.multimodal import MULTIMODAL_REGISTRY
 from vllm.multimodal.evs import compute_mrope_for_media
 from vllm.v1.attention.backends.flash_attn import (
@@ -533,6 +539,7 @@ class LayerwisePrunedFlexAttentionBackend(FlexAttentionBackend):
 
 
 class _LayerwiseFlexPruningMixin:
+    _append_zero_position_axis = False
     supports_multimodal_pruning = True
 
     def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
@@ -666,6 +673,8 @@ class _LayerwiseFlexPruningMixin:
             else:
                 indices = self._selection_engine.select(embeddings, grid_thw=grid_thw)
             positions = compute_mrope_for_media(grid_thw, merge_size).to(embeddings.device)
+            if self._append_zero_position_axis:
+                positions = torch.cat([positions, torch.zeros_like(positions[:, :1])], dim=1)
             metadata = torch.zeros((len(embeddings), 2), dtype=embeddings.dtype, device=embeddings.device)
             metadata[indices] = encode_embedding_selection_metadata(indices, dtype=embeddings.dtype)
             output.append(torch.cat([embeddings, positions, metadata], dim=1))
@@ -681,6 +690,24 @@ class VerlLayerwiseFlexPrunedQwen2_5VLForConditionalGeneration(
     _LayerwiseFlexPruningMixin,
     Qwen2_5_VLForConditionalGeneration,
 ):
+    def _postprocess_image_embeds_evs(self, image_embeds_split, image_input):
+        return self._annotate_image_selection(
+            image_embeds_split,
+            image_input["image_grid_thw"],
+        )
+
+
+@MULTIMODAL_REGISTRY.register_processor(
+    Qwen3VLMultiModalProcessor,
+    info=Qwen3VLProcessingInfo,
+    dummy_inputs=Qwen3VLDummyInputsBuilder,
+)
+class VerlLayerwiseFlexPrunedQwen3VLForConditionalGeneration(
+    _LayerwiseFlexPruningMixin,
+    Qwen3VLForConditionalGeneration,
+):
+    _append_zero_position_axis = True
+
     def _postprocess_image_embeds_evs(self, image_embeds_split, image_input):
         return self._annotate_image_selection(
             image_embeds_split,

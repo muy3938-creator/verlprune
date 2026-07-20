@@ -42,19 +42,15 @@ _STRATEGIES: dict[str, VisionTokenStrategy] = {}
 def _random_strategy(request: VisionTokenSelectionRequest) -> torch.Tensor:
     if request.keep_count == request.token_count:
         return torch.arange(request.token_count, device=request.device)
-    if request.keep_count == 1:
-        return torch.tensor([request.token_count - 1], device=request.device)
     indices = torch.randperm(
-        request.token_count - 1,
+        request.token_count,
         device=request.device,
         generator=request.generator,
-    )[: request.keep_count - 1]
-    return torch.cat((indices, indices.new_tensor([request.token_count - 1]))).sort().values
+    )[: request.keep_count]
+    return indices.sort().values
 
 
 def _uniform_strategy(request: VisionTokenSelectionRequest) -> torch.Tensor:
-    if request.keep_count == 1:
-        return torch.tensor([request.token_count - 1], device=request.device)
     return torch.linspace(
         0,
         request.token_count - 1,
@@ -64,17 +60,22 @@ def _uniform_strategy(request: VisionTokenSelectionRequest) -> torch.Tensor:
 
 
 def _key_norm_strategy(request: VisionTokenSelectionRequest) -> torch.Tensor:
-    """Keep the largest decoder-key norms plus the final MRoPE anchor."""
+    """Keep the visual tokens with the largest decoder-key norms."""
 
     if request.key_states is None:
         raise ValueError("key_norm requires decoder key states")
     if request.keep_count == request.token_count:
         return torch.arange(request.token_count, device=request.device)
-    if request.keep_count == 1:
-        return torch.tensor([request.token_count - 1], device=request.device)
-    scores = request.key_states[:-1].float().square().sum(dim=tuple(range(1, request.key_states.ndim)))
-    selected = scores.topk(request.keep_count - 1, sorted=False).indices
-    return torch.cat((selected, selected.new_tensor([request.token_count - 1]))).sort().values
+    scores = request.key_states.float().square().sum(dim=tuple(range(1, request.key_states.ndim)))
+    return scores.topk(request.keep_count, sorted=False).indices.sort().values
+
+
+def _embedding_norm_strategy(request: VisionTokenSelectionRequest) -> torch.Tensor:
+    """Keep visual encoder embeddings with the largest L2 norms."""
+
+    features = _flat_float(request.features, name="embedding_norm")
+    scores = features.square().sum(dim=-1)
+    return scores.topk(request.keep_count, sorted=False).indices.sort().values
 
 
 def _flat_float(features: torch.Tensor | None, *, name: str) -> torch.Tensor:
@@ -114,12 +115,10 @@ def _divprune_strategy(request: VisionTokenSelectionRequest) -> torch.Tensor:
 
     if request.keep_count == request.token_count:
         return torch.arange(request.token_count, device=request.device)
-    if request.keep_count == 1:
-        return torch.tensor([request.token_count - 1], device=request.device)
     source = request.value_states if request.value_states is not None else request.features
     features = _flat_float(source, name="divprune")
-    candidates = torch.nn.functional.normalize(features[:-1], dim=-1)
-    target = request.keep_count - 1
+    candidates = torch.nn.functional.normalize(features, dim=-1)
+    target = request.keep_count
     if target == len(candidates):
         selected = torch.arange(target, device=request.device)
     else:
@@ -139,8 +138,7 @@ def _divprune_strategy(request: VisionTokenSelectionRequest) -> torch.Tensor:
                 chosen.append(next_index)
                 chosen_mask[next_index] = True
             selected = torch.stack(chosen)
-    anchor = selected.new_tensor([request.token_count - 1])
-    return torch.cat((selected, anchor)).sort().values
+    return selected.sort().values
 
 
 def _dart_strategy(request: VisionTokenSelectionRequest) -> torch.Tensor:
@@ -148,10 +146,6 @@ def _dart_strategy(request: VisionTokenSelectionRequest) -> torch.Tensor:
 
     if request.keep_count == request.token_count:
         return torch.arange(request.token_count, device=request.device)
-    anchor = torch.tensor([request.token_count - 1], device=request.device)
-    if request.keep_count == 1:
-        return anchor
-
     visual_keys = _flat_float(request.key_states, name="dart")
     visual_values = torch.nn.functional.normalize(
         _flat_float(request.value_states, name="dart"),
@@ -178,13 +172,12 @@ def _dart_strategy(request: VisionTokenSelectionRequest) -> torch.Tensor:
     # The released DART defaults use four image and four text pivots.  At 5%
     # that exceeds the complete budget, so scale image pivots down and leave
     # room for at least one duplication-aware farthest-token selection.
-    non_anchor_budget = request.keep_count - 1
     image_pivot_count = min(
         requested_image_pivots,
-        max(1, non_anchor_budget // 2),
-        request.token_count - 1,
+        max(1, request.keep_count // 2),
+        request.token_count,
     )
-    image_scores = visual_keys[:-1].abs().sum(dim=-1)
+    image_scores = visual_keys.abs().sum(dim=-1)
     image_pivots = image_scores.topk(image_pivot_count, sorted=True).indices
     text_pivot_count = min(requested_text_pivots, len(text_keys))
     text_pivots = (
@@ -194,7 +187,6 @@ def _dart_strategy(request: VisionTokenSelectionRequest) -> torch.Tensor:
     )
 
     selected_mask = torch.zeros(request.token_count, dtype=torch.bool, device=request.device)
-    selected_mask[anchor] = True
     selected_mask[image_pivots] = True
     pivot_vectors = [visual_values[index] for index in image_pivots]
     pivot_vectors.extend(text_values[index] for index in text_pivots)
@@ -216,8 +208,6 @@ def _greedy_prune_strategy(request: VisionTokenSelectionRequest) -> torch.Tensor
 
     if request.keep_count == request.token_count:
         return torch.arange(request.token_count, device=request.device)
-    if request.keep_count == 1:
-        return torch.tensor([request.token_count - 1], device=request.device)
     threshold = float(request.options.get("similarity_threshold", 0.9))
     if not -1.0 <= threshold <= 1.0:
         raise ValueError("greedy_prune similarity_threshold must be in [-1, 1]")
@@ -234,8 +224,8 @@ def _greedy_prune_strategy(request: VisionTokenSelectionRequest) -> torch.Tensor
         )[-1],
         dim=0,
     )
-    target = request.keep_count - 1
-    candidates = visual[:-1]
+    target = request.keep_count
+    candidates = visual
     saliency = candidates @ last_text
     order = saliency.argsort(descending=True, stable=True)
     active = torch.ones(len(candidates), dtype=torch.bool, device=request.device)
@@ -263,8 +253,7 @@ def _greedy_prune_strategy(request: VisionTokenSelectionRequest) -> torch.Tensor
                 if len(selected) == target:
                     break
 
-    anchor = order.new_tensor([request.token_count - 1])
-    return torch.cat((torch.stack(selected), anchor)).sort().values
+    return torch.stack(selected).sort().values
 
 
 def register_vision_token_strategy(
@@ -358,8 +347,6 @@ def validate_selected_indices(
         raise ValueError(f"strategy {strategy_name!r} must return sorted unique indices")
     if int(indices[0]) < 0 or int(indices[-1]) >= request.token_count:
         raise ValueError(f"strategy {strategy_name!r} returned an out-of-range index")
-    if int(indices[-1]) != request.token_count - 1:
-        raise ValueError(f"strategy {strategy_name!r} must retain the final MRoPE anchor")
     return indices
 
 
@@ -452,6 +439,7 @@ class VisionTokenSelectionEngine:
 register_vision_token_strategy("random", _random_strategy)
 register_vision_token_strategy("uniform", _uniform_strategy)
 register_vision_token_strategy("key_norm", _key_norm_strategy)
+register_vision_token_strategy("embedding_norm", _embedding_norm_strategy)
 register_vision_token_strategy("dart", _dart_strategy)
 register_vision_token_strategy("divprune", _divprune_strategy)
 register_vision_token_strategy("greedy_prune", _greedy_prune_strategy)
