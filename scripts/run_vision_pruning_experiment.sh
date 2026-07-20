@@ -29,10 +29,20 @@ export VLLM_WORKER_MULTIPROC_METHOD=spawn
 export RAY_DEDUP_LOGS=0
 
 STRATEGY_ARGS=()
+PREFILL_ARGS=()
 if [[ -n "${SELECTOR_KWARGS}" ]]; then
     STRATEGY_ARGS+=("++actor_rollout_ref.model.vision_token_pruning.selector_kwargs=${SELECTOR_KWARGS}")
 fi
-if [[ -n "${PREFILL_SELECTOR_KWARGS}" ]]; then
+if [[ "${PREFILL_KEEP_RATIO}" == "none" ]]; then
+    PREFILL_ARGS+=("actor_rollout_ref.model.vision_token_pruning.prefill_keep_ratio=null")
+else
+    PREFILL_ARGS+=(
+        "actor_rollout_ref.model.vision_token_pruning.prefill_keep_ratio=${PREFILL_KEEP_RATIO}"
+        "actor_rollout_ref.model.vision_token_pruning.prefill_selector=${PREFILL_SELECTOR}"
+        "actor_rollout_ref.model.vision_token_pruning.prefill_prune_after_layer=${PREFILL_PRUNE_AFTER_LAYER}"
+    )
+fi
+if [[ "${PREFILL_KEEP_RATIO}" != "none" && -n "${PREFILL_SELECTOR_KWARGS}" ]]; then
     STRATEGY_ARGS+=("++actor_rollout_ref.model.vision_token_pruning.prefill_selector_kwargs=${PREFILL_SELECTOR_KWARGS}")
 fi
 
@@ -42,9 +52,7 @@ python3 -m verl.trainer.main_ppo --config-name vision_pruning_experiment \
     "actor_rollout_ref.model.path=${MODEL_PATH}" \
     "actor_rollout_ref.model.vision_token_pruning.keep_ratio=${KEEP_RATIO}" \
     "actor_rollout_ref.model.vision_token_pruning.selector=${SELECTOR}" \
-    "actor_rollout_ref.model.vision_token_pruning.prefill_keep_ratio=${PREFILL_KEEP_RATIO}" \
-    "actor_rollout_ref.model.vision_token_pruning.prefill_selector=${PREFILL_SELECTOR}" \
-    "actor_rollout_ref.model.vision_token_pruning.prefill_prune_after_layer=${PREFILL_PRUNE_AFTER_LAYER}" \
+    "${PREFILL_ARGS[@]}" \
     "actor_rollout_ref.model.vision_token_pruning.selector_input=${SELECTOR_INPUT}" \
     "actor_rollout_ref.model.vision_token_pruning.pre_pruning_backend=${PRE_PRUNING_BACKEND}" \
     "actor_rollout_ref.model.vision_token_pruning.prune_after_layer=${PRUNE_AFTER_LAYER}" \

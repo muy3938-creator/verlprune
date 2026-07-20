@@ -1,0 +1,43 @@
+{
+  "metrics": {
+    "model": "/workspace/models/Qwen2.5-VL-3B-Instruct",
+    "adapter": null,
+    "dataset": "/workspace/data/chartvqa",
+    "split": "val",
+    "limit": 1,
+    "mode": "baseline",
+    "keep_ratio": 0.1,
+    "top_p": 0.95,
+    "min_keep_ratio": 0.05,
+    "max_keep_ratio": 0.5,
+    "layer": 0,
+    "max_new_tokens": 1024,
+    "stop_at_answer_tag": true,
+    "accuracy": 1.0,
+    "mean_latency_s": 5.236608923001768,
+    "mean_kept_visual_tokens": 322.0,
+    "mean_original_visual_tokens": 322.0,
+    "mean_retention_ratio": 1.0,
+    "mean_generated_tokens": 181.0,
+    "max_generated_tokens": 181,
+    "max_length_hit_rate": 0.0
+  },
+  "records": [
+    {
+      "index": 0,
+      "query": "What's the color of graph with 56 as the highest value?",
+      "labels": [
+        "Blue"
+      ],
+      "answer": "To determine the color of the graph with the highest value of 56, let's follow these steps:\n\n1. Identify the highest value on the graph: The highest value is 56, which appears in the U.S. data line.\n\n2. Locate the U.S. data line on the chart: The U.S. data line is represented by blue circles (●).\n\n3. Determine the color of the U.S. data line: The U.S. data line is colored blue.\n\n4. Confirm that this is the only data line with a value of 56: There are no other data lines with a value of 56.\n\n5. Conclude the color of the graph with the highest value: The color of the graph with the highest value of 56 is blue.\n\nTherefore, the color of the graph with the highest value of 56 is blue.",
+      "correct": true,
+      "latency_s": 5.236608923001768,
+      "generated_tokens": 181,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 322,
+      "kept_visual_counts": [
+        322
+      ]
+    }
+  ]
+}

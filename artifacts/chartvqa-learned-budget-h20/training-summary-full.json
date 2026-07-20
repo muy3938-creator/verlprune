@@ -1,0 +1,62 @@
+{
+  "dataset": {
+    "train_rows": 256,
+    "validation_rows": 1920,
+    "benchmark_rows": 128
+  },
+  "response_length": {
+    "limit": 512,
+    "max_hit_rate_all_completed_runs": 0.0,
+    "maximum_observed_tokens": 194
+  },
+  "future_default_response_length": 1024,
+  "default_1024_smoke": {
+    "rows": 1,
+    "accuracy": 1.0,
+    "generated_tokens": 181,
+    "max_length_hit_rate": 0.0,
+    "stop_at_answer_tag": true,
+    "prompt_reasoning_steps": 5,
+    "note": "New prompt allowed up to five concise evidence-grounded steps; historical matrix above retained the 512-token cap and prior prompt."
+  },
+  "cot1024_training": {
+    "steps": 10,
+    "learning_rate": 1e-6,
+    "prefill_keep_ratio": null,
+    "top_p": 0.8,
+    "budget_clamp": [0.05, 0.5],
+    "training_response_cap": 1024,
+    "training_max_response_tokens": 162,
+    "training_clip_ratio": 0.0,
+    "gradient_norm_min": 0.02505921758711338,
+    "gradient_norm_max": 0.9175755977630615,
+    "peak_allocated_gib": 36.75073957443237,
+    "wandb_run": "xxtxeu1i",
+    "adapter_sha256": "af963f41220241e24f67eac42c5ccb39151bbf86a9aefbc06a2d4cfc653ecaa3",
+    "benchmark_16": {
+      "dense": {"accuracy": 0.5, "retention": 1.0, "mean_generated_tokens": 274.3125, "max_generated_tokens": 588},
+      "top_p_0.80": {"accuracy": 0.25, "retention": 0.40206361481559155, "mean_generated_tokens": 254.875, "max_generated_tokens": 643},
+      "trained_top_p_0.80": {"accuracy": 0.25, "retention": 0.40800506504486717, "mean_generated_tokens": 247.9375, "max_generated_tokens": 475}
+    },
+    "interpretation": "Negative small-sample quality diagnostic; expanded CoT justified the 1024 cap but ten updates did not improve top-p accuracy."
+  },
+  "benchmark_128": {
+    "dense": {"accuracy": 0.5703125, "retention": 1.0, "latency_s": 1.1336616764217808},
+    "random_10_percent": {"accuracy": 0.1875, "retention": 0.10011731126322158, "latency_s": 2.4840444644843984},
+    "top_p_0.80": {"accuracy": 0.5234375, "retention": 0.3776983226153971, "latency_s": 1.7265818012108696},
+    "top_p_0.90": {"accuracy": 0.515625, "retention": 0.4959512998585419, "latency_s": 1.701675338976571},
+    "top_p_0.95": {"accuracy": 0.53125, "retention": 0.49955340752416416, "latency_s": 1.7189341253593255},
+    "trained_two_stage_dense": {"accuracy": 0.546875, "retention": 1.0},
+    "trained_two_stage_top_p_0.80": {"accuracy": 0.5234375, "retention": 0.3802343722535984},
+    "trained_two_stage_top_p_0.95": {"accuracy": 0.5, "retention": 0.4996219103964759},
+    "trained_pure_dynamic_top_p_0.80_lr1e-6": {"accuracy": 0.53125, "retention": 0.37707124577123957, "latency_s": 2.622066312156278}
+  },
+  "pure_dynamic_training": {
+    "steps": 10,
+    "learning_rate": 1e-6,
+    "prefill_keep_ratio": null,
+    "top_p": 0.8,
+    "budget_clamp": [0.05, 0.5],
+    "adapter_sha256": "6d84f16cf3acefd36073eeb705db7e297b81e5c8c3d39902f6d4b1c47a695b84"
+  }
+}

@@ -12,15 +12,17 @@ TRAIN_LIMIT="${TRAIN_LIMIT:-256}"
 VAL_LIMIT="${VAL_LIMIT:-128}"
 TEST_LIMIT="${TEST_LIMIT:-128}"
 TRAINING_STEPS="${TRAINING_STEPS:-10}"
+ACTOR_LR="${ACTOR_LR:-1e-6}"
 KEEP_RATIO="${KEEP_RATIO:-0.10}"
-TOP_P="${TOP_P:-0.95}"
-BUDGET_SCHEDULE="${BUDGET_SCHEDULE:-[0.99,0.97,0.95,0.90]}"
+TOP_P="${TOP_P:-0.80}"
+BUDGET_SCHEDULE="${BUDGET_SCHEDULE:-[]}"
 MIN_KEEP_RATIO="${MIN_KEEP_RATIO:-0.05}"
 MAX_KEEP_RATIO="${MAX_KEEP_RATIO:-0.50}"
+PHYSICAL_PREFILL_KEEP_RATIO="${PHYSICAL_PREFILL_KEEP_RATIO:-none}"
 PRUNE_LAYER="${PRUNE_LAYER:-0}"
 WANDB_PROJECT="${WANDB_PROJECT:-vision-opd-chartvqa}"
 MAX_PROMPT_LENGTH="${MAX_PROMPT_LENGTH:-2048}"
-RESPONSE_LENGTH="${RESPONSE_LENGTH:-512}"
+RESPONSE_LENGTH="${RESPONSE_LENGTH:-1024}"
 MAX_SEQUENCE_LENGTH=$((MAX_PROMPT_LENGTH + RESPONSE_LENGTH))
 
 export PYTHONPATH="${PROJECT_ROOT}:${PYTHONPATH:-}"
@@ -41,10 +43,12 @@ python3 "${PROJECT_ROOT}/scripts/prepare_chartvqa_opd.py" \
 
 COMMON=(
   --model "${MODEL_PATH}"
-  --dataset "${EXPERIMENT_DIR}/data"
-  --split validation
+  --dataset "${CHARTVQA_SOURCE}"
+  --split val
   --limit "${VAL_LIMIT}"
   --max-new-tokens "${RESPONSE_LENGTH}"
+  --min-keep-ratio "${MIN_KEEP_RATIO}"
+  --max-keep-ratio "${MAX_KEEP_RATIO}"
   --wandb-project "${WANDB_PROJECT}"
 )
 
@@ -76,13 +80,14 @@ OUTPUT_DIR="${EXPERIMENT_DIR}/training" \
 KEEP_RATIO="${KEEP_RATIO}" \
 SELECTOR="vision_pulse" \
 SELECTOR_KWARGS="{budget_mode:top_p,top_p:${TOP_P},budget_schedule:${BUDGET_SCHEDULE},temperature:1.0,min_keep_ratio:${MIN_KEEP_RATIO},max_keep_ratio:${MAX_KEEP_RATIO},capture_capacity:256}" \
-PREFILL_KEEP_RATIO="${KEEP_RATIO}" \
+PREFILL_KEEP_RATIO="${PHYSICAL_PREFILL_KEEP_RATIO}" \
 PREFILL_SELECTOR="random" \
 PRUNE_AFTER_LAYER="${PRUNE_LAYER}" \
 TOTAL_TRAINING_STEPS="${TRAINING_STEPS}" \
 "${PROJECT_ROOT}/scripts/run_vision_pruning_experiment.sh" \
   actor_rollout_ref.actor.fsdp_config.param_offload=true \
   actor_rollout_ref.actor.fsdp_config.optimizer_offload=true \
+  actor_rollout_ref.actor.optim.lr="${ACTOR_LR}" \
   actor_rollout_ref.rollout.gpu_memory_utilization=0.35 \
   data.max_prompt_length="${MAX_PROMPT_LENGTH}" \
   data.max_response_length="${RESPONSE_LENGTH}" \

@@ -25,10 +25,10 @@ if str(PROJECT_ROOT) not in sys.path:
 
 PROMPT_TEMPLATE = """You are an expert chart reasoning assistant.
 Inspect the chart carefully and solve the question. Reason step by step about
-the visual evidence, quantities, comparisons, and any arithmetic needed. Use at
-most three short reasoning steps and no more than 60 words before the answer.
-End with exactly one final answer inside <answer>...</answer>. Do not put extra
-text after the answer.
+the visual evidence, quantities, comparisons, and any arithmetic needed. Use up
+to five concise, evidence-grounded reasoning steps when useful. End with exactly
+one final answer inside <answer>...</answer>. Do not put extra text after the
+answer.
 
 Question: {question}
 """
@@ -101,7 +101,14 @@ def _image(value):
     raise TypeError(f"unsupported ChartQA image value: {type(value).__name__}")
 
 
-def _build_config(mode: str, keep_ratio: float, top_p: float, layer: int):
+def _build_config(
+    mode: str,
+    keep_ratio: float,
+    top_p: float,
+    layer: int,
+    min_keep_ratio: float,
+    max_keep_ratio: float,
+):
     from verl.models.vision_token_pruning.config import VisionTokenPruningConfig
 
     if mode == "random":
@@ -125,8 +132,8 @@ def _build_config(mode: str, keep_ratio: float, top_p: float, layer: int):
                 "budget_mode": "top_p",
                 "top_p": top_p,
                 "temperature": 1.0,
-                "min_keep_ratio": 0.05,
-                "max_keep_ratio": 1.0,
+                "min_keep_ratio": min_keep_ratio,
+                "max_keep_ratio": max_keep_ratio,
                 "capture_capacity": 256,
             },
             layerwise_backend="flex",
@@ -145,8 +152,10 @@ def main() -> None:
     parser.add_argument("--mode", choices=("baseline", "random", "top_p"), required=True)
     parser.add_argument("--keep-ratio", type=float, default=0.1)
     parser.add_argument("--top-p", type=float, default=0.95)
+    parser.add_argument("--min-keep-ratio", type=float, default=0.05)
+    parser.add_argument("--max-keep-ratio", type=float, default=0.50)
     parser.add_argument("--layer", type=int, default=0)
-    parser.add_argument("--max-new-tokens", type=int, default=512)
+    parser.add_argument("--max-new-tokens", type=int, default=1024)
     parser.add_argument("--stop-at-answer-tag", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--wandb-project", default=None)
@@ -186,6 +195,8 @@ def main() -> None:
     keep_counts = []
     generated_token_counts = []
     max_length_hits = 0
+    original_visual_token_counts = []
+    retention_ratios = []
     for index, row in enumerate(dataset):
         image = _image(row["image"])
         question = str(row["query"])
@@ -196,11 +207,20 @@ def main() -> None:
         prompt = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         inputs = processor(text=[prompt], images=[image], return_tensors="pt")
         inputs = {key: value.cuda() if hasattr(value, "cuda") else value for key, value in inputs.items()}
+        original_visual_tokens = int((inputs["input_ids"] == image_token_id).sum().item())
+        original_visual_token_counts.append(original_visual_tokens)
         state = None
         if args.mode != "baseline":
             from verl.models.vision_token_pruning.transformers_sampler import install_transformers_pruning
 
-            config = _build_config(args.mode, args.keep_ratio, args.top_p, args.layer)
+            config = _build_config(
+                args.mode,
+                args.keep_ratio,
+                args.top_p,
+                args.layer,
+                args.min_keep_ratio,
+                args.max_keep_ratio,
+            )
             state = install_transformers_pruning(
                 model,
                 input_ids=inputs["input_ids"],
@@ -237,6 +257,7 @@ def main() -> None:
             "latency_s": elapsed,
             "generated_tokens": generated_tokens,
             "hit_max_new_tokens": hit_max_new_tokens,
+            "original_visual_tokens": original_visual_tokens,
         }
         if state is not None:
             selection = state.selections()[0]
@@ -244,9 +265,15 @@ def main() -> None:
                 counts = [len(values) for values in selection.query_kept_visual_indices if values]
                 row_result["kept_visual_counts"] = counts
                 keep_counts.extend(counts)
+                retention_ratios.extend(count / original_visual_tokens for count in counts)
             else:
                 row_result["kept_visual_counts"] = [len(selection.kept_visual_indices)]
                 keep_counts.append(len(selection.kept_visual_indices))
+                retention_ratios.append(len(selection.kept_visual_indices) / original_visual_tokens)
+        else:
+            row_result["kept_visual_counts"] = [original_visual_tokens]
+            keep_counts.append(original_visual_tokens)
+            retention_ratios.append(1.0)
         records.append(row_result)
         print(json.dumps({"index": index, "correct": correct, "answer": answer[:160]}, ensure_ascii=False), flush=True)
 
@@ -259,10 +286,17 @@ def main() -> None:
         "mode": args.mode,
         "keep_ratio": args.keep_ratio,
         "top_p": args.top_p,
+        "min_keep_ratio": args.min_keep_ratio,
+        "max_keep_ratio": args.max_keep_ratio,
         "layer": args.layer,
+        "max_new_tokens": args.max_new_tokens,
+        "stop_at_answer_tag": args.stop_at_answer_tag,
         "accuracy": total_correct / max(1, len(records)),
         "mean_latency_s": total_seconds / max(1, len(records)),
         "mean_kept_visual_tokens": sum(keep_counts) / max(1, len(keep_counts)),
+        "mean_original_visual_tokens": sum(original_visual_token_counts)
+        / max(1, len(original_visual_token_counts)),
+        "mean_retention_ratio": sum(retention_ratios) / max(1, len(retention_ratios)),
         "mean_generated_tokens": sum(generated_token_counts) / max(1, len(generated_token_counts)),
         "max_generated_tokens": max(generated_token_counts, default=0),
         "max_length_hit_rate": max_length_hits / max(1, len(records)),

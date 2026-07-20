@@ -19,8 +19,8 @@ from PIL import Image
 PROMPT = """<image>
 You are an expert chart reasoning assistant. Analyze the chart carefully,
 reason step by step about the visual evidence and any arithmetic needed, then
-give the final answer in one concise sentence. Use at most three short reasoning
-steps and no more than 60 words before the answer. Put the final answer inside
+give the final answer in one concise sentence. Use up to five concise,
+evidence-grounded reasoning steps when useful. Put the final answer inside
 <answer>...</answer>. Do not invent values that are not supported by the chart.
 
 Question: {question}"""

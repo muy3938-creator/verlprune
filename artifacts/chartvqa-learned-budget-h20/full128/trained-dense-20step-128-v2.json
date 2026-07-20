@@ -1,0 +1,2073 @@
+{
+  "metrics": {
+    "model": "/workspace/models/Qwen2.5-VL-3B-Instruct",
+    "adapter": "/workspace/outputs/chartvqa_training_20step_080/lora_adapter",
+    "dataset": "/workspace/data/chartvqa",
+    "split": "val",
+    "limit": 128,
+    "mode": "baseline",
+    "keep_ratio": 0.1,
+    "top_p": 0.95,
+    "min_keep_ratio": 0.05,
+    "max_keep_ratio": 0.5,
+    "layer": 0,
+    "accuracy": 0.546875,
+    "mean_latency_s": 1.8645968690939583,
+    "mean_kept_visual_tokens": 481.59375,
+    "mean_original_visual_tokens": 481.59375,
+    "mean_retention_ratio": 1.0,
+    "mean_generated_tokens": 37.1484375,
+    "max_generated_tokens": 146,
+    "max_length_hit_rate": 0.0
+  },
+  "records": [
+    {
+      "index": 0,
+      "query": "What's the color of graph with 56 as the highest value?",
+      "labels": [
+        "Blue"
+      ],
+      "answer": "The color of the graph with 56 as the highest value is blue.",
+      "correct": true,
+      "latency_s": 1.2813503309989756,
+      "generated_tokens": 17,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 322,
+      "kept_visual_counts": [
+        322
+      ]
+    },
+    {
+      "index": 1,
+      "query": "In which year the difference between blue and green graph 1?",
+      "labels": [
+        "2018"
+      ],
+      "answer": "To find the year when the difference between the blue (Germany) and green (U.S.) graphs is the smallest:\n1. Look for the lowest point where the blue line crosses below the green line.\n2. This occurs around 2014.\n3. The difference is minimal in this year.\n\n<answer>2014</answer>",
+      "correct": true,
+      "latency_s": 3.540081862000079,
+      "generated_tokens": 72,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 322,
+      "kept_visual_counts": [
+        322
+      ]
+    },
+    {
+      "index": 2,
+      "query": "What does the blue line represent?",
+      "labels": [
+        "Not too much/not at all"
+      ],
+      "answer": "The blue line represents the belief that the U.S. takes the interest of other countries into account when making international policy decisions.",
+      "correct": false,
+      "latency_s": 1.3175858710019384,
+      "generated_tokens": 26,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 255,
+      "kept_visual_counts": [
+        255
+      ]
+    },
+    {
+      "index": 3,
+      "query": "What is the max value of blue line?",
+      "labels": [
+        "0.72"
+      ],
+      "answer": "The max value of the blue line is 72, which represents the belief that the U.S. takes the interest of other countries into account \"not too much/not at all\" in making international policy decisions.",
+      "correct": false,
+      "latency_s": 2.17543489399759,
+      "generated_tokens": 44,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 255,
+      "kept_visual_counts": [
+        255
+      ]
+    },
+    {
+      "index": 4,
+      "query": "What's the percentage of respondents who say Job is a top priority for the president and Congress in 2016?",
+      "labels": [
+        "68"
+      ],
+      "answer": "The percentage of respondents who say jobs is a top priority for the president and Congress in 2016 is 68%.",
+      "correct": true,
+      "latency_s": 1.4141316580025887,
+      "generated_tokens": 28,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 165,
+      "kept_visual_counts": [
+        165
+      ]
+    },
+    {
+      "index": 5,
+      "query": "Which line has the lowest value of 71%?",
+      "labels": [
+        "Economy"
+      ],
+      "answer": "The line representing \"Budget deficit\" has the lowest value of 71%.",
+      "correct": false,
+      "latency_s": 0.8635832109976036,
+      "generated_tokens": 17,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 165,
+      "kept_visual_counts": [
+        165
+      ]
+    },
+    {
+      "index": 6,
+      "query": "What is the unfavourable value in 2014?",
+      "labels": [
+        "64"
+      ],
+      "answer": "The unfavourable value in 2014 is 64%.",
+      "correct": true,
+      "latency_s": 0.8735374419993605,
+      "generated_tokens": 17,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 143,
+      "kept_visual_counts": [
+        143
+      ]
+    },
+    {
+      "index": 7,
+      "query": "What is the median value of favourable line in the graph?",
+      "labels": [
+        "40"
+      ],
+      "answer": "The median value of the favorable line in the graph is 31%.",
+      "correct": false,
+      "latency_s": 0.809492536001926,
+      "generated_tokens": 16,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 143,
+      "kept_visual_counts": [
+        143
+      ]
+    },
+    {
+      "index": 8,
+      "query": "Which answer response has the highest value on this graph?",
+      "labels": [
+        "Disapprove"
+      ],
+      "answer": "The highest value on the graph is 53, which corresponds to the \"Disapprove\" response in November 2013.",
+      "correct": true,
+      "latency_s": 1.4458745200026897,
+      "generated_tokens": 29,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 176,
+      "kept_visual_counts": [
+        176
+      ]
+    },
+    {
+      "index": 9,
+      "query": "How many data points on the disapprove line are above 50?",
+      "labels": [
+        "2"
+      ],
+      "answer": "2",
+      "correct": true,
+      "latency_s": 0.13054791200192994,
+      "generated_tokens": 2,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 176,
+      "kept_visual_counts": [
+        176
+      ]
+    },
+    {
+      "index": 10,
+      "query": "Which indicator remains all time lowest from Dec. 2008 to Sep. 2011?",
+      "labels": [
+        "Mostly good news"
+      ],
+      "answer": "The \"Mostly good news\" indicator remains all time lowest from Dec. 2008 to Sep. 2011.",
+      "correct": true,
+      "latency_s": 1.5082244830009586,
+      "generated_tokens": 30,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 195,
+      "kept_visual_counts": [
+        195
+      ]
+    },
+    {
+      "index": 11,
+      "query": "How much value of 'Mostly bad news' increased from Jan. 2011 to Sept. 2011?",
+      "labels": [
+        "37"
+      ],
+      "answer": "The value of 'Mostly bad news' increased by 43 points from January 2011 (24%) to September 2011 (67%).",
+      "correct": false,
+      "latency_s": 1.8904153420007788,
+      "generated_tokens": 38,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 195,
+      "kept_visual_counts": [
+        195
+      ]
+    },
+    {
+      "index": 12,
+      "query": "When does the red line reach the peak?",
+      "labels": [
+        "44538"
+      ],
+      "answer": "The red line reaches its peak in December 2008.",
+      "correct": false,
+      "latency_s": 0.7677792530012084,
+      "generated_tokens": 15,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 195,
+      "kept_visual_counts": [
+        195
+      ]
+    },
+    {
+      "index": 13,
+      "query": "What's the total sum of peak points of all three lines?",
+      "labels": [
+        "155"
+      ],
+      "answer": "The total sum of peak points is 182.",
+      "correct": false,
+      "latency_s": 0.6693579359998694,
+      "generated_tokens": 13,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 195,
+      "kept_visual_counts": [
+        195
+      ]
+    },
+    {
+      "index": 14,
+      "query": "When does the yellow line reach the peak?",
+      "labels": [
+        "44207"
+      ],
+      "answer": "The yellow line reaches its peak in December 2008.",
+      "correct": false,
+      "latency_s": 0.768536839997978,
+      "generated_tokens": 15,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 195,
+      "kept_visual_counts": [
+        195
+      ]
+    },
+    {
+      "index": 15,
+      "query": "What's the total sum of peak points of green and red lines?",
+      "labels": [
+        "87"
+      ],
+      "answer": "The peak point for the green line is 5 (mostly good news), and the peak point for the red line is 80 (mix of good and bad news). The total sum is 5 + 80 = 85. <answer>85</answer>",
+      "correct": true,
+      "latency_s": 2.933948305002559,
+      "generated_tokens": 58,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 195,
+      "kept_visual_counts": [
+        195
+      ]
+    },
+    {
+      "index": 16,
+      "query": "What's the lowest value of yellow line?",
+      "labels": [
+        "19"
+      ],
+      "answer": "The lowest value of the yellow line is 53, which occurred in December 2010.",
+      "correct": false,
+      "latency_s": 1.15637087900177,
+      "generated_tokens": 23,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 168,
+      "kept_visual_counts": [
+        168
+      ]
+    },
+    {
+      "index": 17,
+      "query": "What's the difference of value of highiest value of red and lowest value of green line?",
+      "labels": [
+        "79"
+      ],
+      "answer": "The difference is 79. The highest value of the red line is 80, and the lowest value of the green line is 1. Subtracting these values gives us 79 as the difference.",
+      "correct": true,
+      "latency_s": 2.253386406999198,
+      "generated_tokens": 45,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 168,
+      "kept_visual_counts": [
+        168
+      ]
+    },
+    {
+      "index": 18,
+      "query": "What is the colour of oppose in the graph?",
+      "labels": [
+        "Light blue"
+      ],
+      "answer": "The color of \"oppose\" in the graph is blue.",
+      "correct": false,
+      "latency_s": 0.7314698429981945,
+      "generated_tokens": 14,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 110,
+      "kept_visual_counts": [
+        110
+      ]
+    },
+    {
+      "index": 19,
+      "query": "How many times there is 44 value in the Favor?",
+      "labels": [
+        "3"
+      ],
+      "answer": "There are two instances of the value 44 in the \"Favor\" column of the chart.",
+      "correct": false,
+      "latency_s": 1.1149375919994782,
+      "generated_tokens": 22,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 110,
+      "kept_visual_counts": [
+        110
+      ]
+    },
+    {
+      "index": 20,
+      "query": "What is the percentage of people who are dissatisfied with Spain's democracy?",
+      "labels": [
+        "68"
+      ],
+      "answer": "The pie chart shows that 65% of people are dissatisfied with how democracy is working in Spain.",
+      "correct": true,
+      "latency_s": 1.1440415260003647,
+      "generated_tokens": 23,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 98,
+      "kept_visual_counts": [
+        98
+      ]
+    },
+    {
+      "index": 21,
+      "query": "What is the ratio of people who are dissatisfied and satisfied with Spain's democracy?",
+      "labels": [
+        "2.125"
+      ],
+      "answer": "To find the ratio, divide the number of dissatisfied by the number of satisfied:\nRatio = Dissatisfied / Satisfied = 65% / 32% = 1.97",
+      "correct": false,
+      "latency_s": 2.0023049420015013,
+      "generated_tokens": 41,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 98,
+      "kept_visual_counts": [
+        98
+      ]
+    },
+    {
+      "index": 22,
+      "query": "Is the Pie chart divided into 3 segment?",
+      "labels": [
+        "Yes"
+      ],
+      "answer": "Yes, the pie chart is divided into three segments: \"Yes,\" \"No,\" and \"DK\" (Don't Know).",
+      "correct": true,
+      "latency_s": 1.342281796001771,
+      "generated_tokens": 27,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 121,
+      "kept_visual_counts": [
+        121
+      ]
+    },
+    {
+      "index": 23,
+      "query": "IS the value of No more then sum of Yes and Dk?",
+      "labels": [
+        "Yes"
+      ],
+      "answer": "Yes, the value of \"No\" (73%) is indeed greater than the sum of \"Yes\" (17%) and \"DK\" (10%). The total exceeds 100% due to rounding.",
+      "correct": true,
+      "latency_s": 2.2952419979992555,
+      "generated_tokens": 47,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 121,
+      "kept_visual_counts": [
+        121
+      ]
+    },
+    {
+      "index": 24,
+      "query": "What is the percentage of Iraqi dependents citizen?",
+      "labels": [
+        "0.12"
+      ],
+      "answer": "To find the percentage of Iraqi dependents, we need to:\n1. Identify the number of Iraqi dependents (47,000).\n2. Add the number of principal applicants (24,000 + 12,000 = 36,000).\n3. Calculate the percentage: (47,000 / (47,000 + 36,000)) * 100 ≈ 56%.\n\nFinal Answer: The percentage of Iraqi dependents is approximately 56%.",
+      "correct": false,
+      "latency_s": 5.777577863998886,
+      "generated_tokens": 119,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 154,
+      "kept_visual_counts": [
+        154
+      ]
+    },
+    {
+      "index": 25,
+      "query": "What is the total percentage of Afghan applicants and Iraqi applicants?",
+      "labels": [
+        "0.34"
+      ],
+      "answer": "To find the total percentage of Afghan applicants and Iraqi applicants:\n1. Add the percentages for Afghan applicants (47%) and Iraqi applicants (12%).\n2. The sum is 59%.\n3. This represents the combined percentage of Afghan and Iraqi applicants.\n\n<answer>59%</answer>",
+      "correct": false,
+      "latency_s": 3.0669407790010155,
+      "generated_tokens": 63,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 154,
+      "kept_visual_counts": [
+        154
+      ]
+    },
+    {
+      "index": 26,
+      "query": "Is the color of 53% segment light green?",
+      "labels": [
+        "No"
+      ],
+      "answer": "The color of the 53% segment is dark red, not light green.",
+      "correct": true,
+      "latency_s": 0.9007421970018186,
+      "generated_tokens": 18,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 110,
+      "kept_visual_counts": [
+        110
+      ]
+    },
+    {
+      "index": 27,
+      "query": "What's the ratio of Lean Republican segment and Republican segment?",
+      "labels": [
+        "0.7358"
+      ],
+      "answer": "The ratio is approximately 0.74 (39% to 53%).",
+      "correct": false,
+      "latency_s": 0.9489916550010093,
+      "generated_tokens": 19,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 110,
+      "kept_visual_counts": [
+        110
+      ]
+    },
+    {
+      "index": 28,
+      "query": "What segment represent by dark grey color?",
+      "labels": [
+        "Both"
+      ],
+      "answer": "The dark grey color represents \"Neither/Other\".",
+      "correct": false,
+      "latency_s": 0.5624221159996523,
+      "generated_tokens": 11,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 144,
+      "kept_visual_counts": [
+        144
+      ]
+    },
+    {
+      "index": 29,
+      "query": "What is the percentage of both and don't know?",
+      "labels": [
+        "[4, 9]"
+      ],
+      "answer": "To find the percentage of both and don't know:\n1. Identify the \"Both\" category in the pie chart, which is 4%.\n2. Identify the \"Don't know\" category in the pie chart, which is 9%.\n3. Add these two percentages together: 4% + 9% = 13%.\n\nTherefore, the percentage of both and don't know is 13%.",
+      "correct": false,
+      "latency_s": 4.243001122998976,
+      "generated_tokens": 87,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 144,
+      "kept_visual_counts": [
+        144
+      ]
+    },
+    {
+      "index": 30,
+      "query": "What's the value of leftmost bar in the bottom?",
+      "labels": [
+        "12"
+      ],
+      "answer": "The value of the leftmost bar in the bottom is 57%.",
+      "correct": false,
+      "latency_s": 0.8119247569993604,
+      "generated_tokens": 16,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 210,
+      "kept_visual_counts": [
+        210
+      ]
+    },
+    {
+      "index": 31,
+      "query": "What is the largest value of dark green bar?",
+      "labels": [
+        "0.92"
+      ],
+      "answer": "The largest value of the dark green bar is 92%, which represents white officers' belief that \"Our country has made the changes needed to give blacks equal rights with whites.\"",
+      "correct": false,
+      "latency_s": 1.8151655250003387,
+      "generated_tokens": 37,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 210,
+      "kept_visual_counts": [
+        210
+      ]
+    },
+    {
+      "index": 32,
+      "query": "Which country data analysed here?",
+      "labels": [
+        "cuba"
+      ],
+      "answer": "The data analyzed in this chart pertains to Cuba's prospects for democracy over the next several years.",
+      "correct": true,
+      "latency_s": 1.0510910929988313,
+      "generated_tokens": 21,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 240,
+      "kept_visual_counts": [
+        240
+      ]
+    },
+    {
+      "index": 33,
+      "query": "What is the maximum value of dark brown bar?",
+      "labels": [
+        "7"
+      ],
+      "answer": "The maximum value of the dark brown bar in the chart represents the percentage of people who think Cuba will become \"Less democratic\" over the next several years. This value is 3%.",
+      "correct": false,
+      "latency_s": 1.8704933199987863,
+      "generated_tokens": 38,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 240,
+      "kept_visual_counts": [
+        240
+      ]
+    },
+    {
+      "index": 34,
+      "query": "What's the percentage of very important bar for healthy eating habits?",
+      "labels": [
+        "0.72"
+      ],
+      "answer": "The percentage of very important for healthy eating habits is 72%.",
+      "correct": false,
+      "latency_s": 0.7605315180007892,
+      "generated_tokens": 15,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 195,
+      "kept_visual_counts": [
+        195
+      ]
+    },
+    {
+      "index": 35,
+      "query": "What's the average of green bar median and light blue bar median?",
+      "labels": [
+        "17"
+      ],
+      "answer": "To find the average of the green bar median (3) and the light blue bar median (47), I'll add them together and divide by 2:\n\n(3 + 47) / 2 = 50 / 2 = 25\n\nTherefore, the average is 25.\n\n<answer>25</answer>",
+      "correct": false,
+      "latency_s": 3.518778633002512,
+      "generated_tokens": 72,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 195,
+      "kept_visual_counts": [
+        195
+      ]
+    },
+    {
+      "index": 36,
+      "query": "What does dark blue bar represents?",
+      "labels": [
+        "Very Important"
+      ],
+      "answer": "The dark blue bar in the chart represents \"Very important\" for each of the following categories when it comes to improving a person's chances of a long and healthy life.",
+      "correct": true,
+      "latency_s": 1.721145567997155,
+      "generated_tokens": 35,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 195,
+      "kept_visual_counts": [
+        195
+      ]
+    },
+    {
+      "index": 37,
+      "query": "What's the average value of all dark blue bars?",
+      "labels": [
+        "62.75"
+      ],
+      "answer": "To find the average value of all dark blue bars:\n\n1. Sum up the values for healthy eating habits (72), getting enough physical exercise (71), and safe and healthy housing conditions (61).\n2. Add these numbers together: 72 + 71 + 61 = 204.\n3. Divide this sum by the number of bars (3): 204 / 3 = 68.\n\nTherefore, the average value of all dark blue bars is 68.\n\n<answer>68</answer>",
+      "correct": false,
+      "latency_s": 5.594058396000037,
+      "generated_tokens": 115,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 195,
+      "kept_visual_counts": [
+        195
+      ]
+    },
+    {
+      "index": 38,
+      "query": "What does the color green indicate?",
+      "labels": [
+        "Support"
+      ],
+      "answer": "The color green indicates support for the measure in question.",
+      "correct": true,
+      "latency_s": 0.6101228869993065,
+      "generated_tokens": 12,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 121,
+      "kept_visual_counts": [
+        121
+      ]
+    },
+    {
+      "index": 39,
+      "query": "What is the difference between the longest and the shortest green bar?",
+      "labels": [
+        "7"
+      ],
+      "answer": "The difference between the longest and the shortest green bar is 11 percentage points.",
+      "correct": false,
+      "latency_s": 0.9018497069992009,
+      "generated_tokens": 18,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 121,
+      "kept_visual_counts": [
+        121
+      ]
+    },
+    {
+      "index": 40,
+      "query": "Which country has the highest percentage value of \"a lot\"?",
+      "labels": [
+        "Kenya"
+      ],
+      "answer": "To determine which country has the highest percentage value for \"a lot,\" I'll compare the values in each row:\n\n1. Kenya: 69%\n2. Nigeria: 68%\n3. South Africa: 62%\n4. U.S.: 56%\n5. India: 55%\n6. Greece: 55%\n7. Italy: 50%\n8. Poland: 48%\n9. Hungary: 32%\n\nThe highest value is 69%, which corresponds to Kenya. Therefore, Kenya has the highest percentage value for \"a lot.\"\n\n<answer>Kenya</answer>",
+      "correct": true,
+      "latency_s": 6.384889782002574,
+      "generated_tokens": 131,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 220,
+      "kept_visual_counts": [
+        220
+      ]
+    },
+    {
+      "index": 41,
+      "query": "What is the maximum value of \"a lot\" among countries?",
+      "labels": [
+        "0.69"
+      ],
+      "answer": "The maximum value of \"a lot\" among countries is 69%, which corresponds to Kenya.",
+      "correct": false,
+      "latency_s": 1.0527008589997422,
+      "generated_tokens": 21,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 220,
+      "kept_visual_counts": [
+        220
+      ]
+    },
+    {
+      "index": 42,
+      "query": "How many bars are there in the graph?",
+      "labels": [
+        "2"
+      ],
+      "answer": "There are two bars in the graph.",
+      "correct": false,
+      "latency_s": 0.5255555030016694,
+      "generated_tokens": 9,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 43,
+      "query": "What is the total sum of both the bars?",
+      "labels": [
+        "7.81"
+      ],
+      "answer": "To find the total sum of both bars:\n1. Identify the values for Mauritius and Cyprus from the chart.\n2. Add these values together: 6.47 + 1.34 = 7.81\n3. The total sum of both bars is 7.81.",
+      "correct": true,
+      "latency_s": 3.1677337369983434,
+      "generated_tokens": 64,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 44,
+      "query": "What's the value of United States?",
+      "labels": [
+        "0.124"
+      ],
+      "answer": "The value for the United States is 12.4%.",
+      "correct": false,
+      "latency_s": 0.7498300840015872,
+      "generated_tokens": 14,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 45,
+      "query": "What's the average value of Canada, Belgium and France?",
+      "labels": [
+        "0.0277"
+      ],
+      "answer": "To find the average, add the values for Canada, Belgium, and France (1.81%, 2.99%, and 3.52%) and divide by 3. The sum is 8.32% / 3 = 2.77%. Therefore, the average value is 2.77%.",
+      "correct": false,
+      "latency_s": 3.5488656109992007,
+      "generated_tokens": 72,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 46,
+      "query": "What is the death rate in the age group 5-14 years old?",
+      "labels": [
+        "0.0034"
+      ],
+      "answer": "The death rate in the age group 5-14 years old is 0.34 per 100,000 individuals.",
+      "correct": false,
+      "latency_s": 1.6188018770008057,
+      "generated_tokens": 32,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 47,
+      "query": "Find the median value of all the bars?",
+      "labels": [
+        "0.68"
+      ],
+      "answer": "The median value is 0.77.",
+      "correct": false,
+      "latency_s": 0.6045716590015218,
+      "generated_tokens": 11,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 48,
+      "query": "Which place shows the highest death rate?",
+      "labels": [
+        "Grenada"
+      ],
+      "answer": "Grenada shows the highest death rate attributed to an unsafe water source in 2000.",
+      "correct": true,
+      "latency_s": 1.1324412730027689,
+      "generated_tokens": 22,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 49,
+      "query": "Is the value of death rate in Denmark more then Croatia?",
+      "labels": [
+        "No"
+      ],
+      "answer": "Denmark's death rate is less than Croatia's. Denmark has a death rate of 0.03 per 100,000 individuals, while Croatia has a death rate of 0.1 per 100,000 individuals. Therefore, the death rate in Denmark is less than that in Croatia.",
+      "correct": false,
+      "latency_s": 3.471796451998671,
+      "generated_tokens": 70,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 50,
+      "query": "How many categories are there in the chart?",
+      "labels": [
+        "3"
+      ],
+      "answer": "There are three categories in the chart: Europe - 754.28 million, Europe - 106.49 million, and Europe - 34.58 million.",
+      "correct": true,
+      "latency_s": 2.1063381629974174,
+      "generated_tokens": 42,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 51,
+      "query": "What's the average of two smallest bar?",
+      "labels": [
+        "70.535"
+      ],
+      "answer": "To find the average of the two smallest bars:\n1. Identify the two smallest values: 34.58 million and 106.49 million.\n2. Add these values together: 34.58 + 106.49 = 141.07 million.\n3. Divide the sum by 2 to get the average: 141.07 / 2 = 70.535 million.\n\n<answer>70.535 million</answer>",
+      "correct": true,
+      "latency_s": 5.500634402000287,
+      "generated_tokens": 112,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 52,
+      "query": "How many bars are there in the graph?",
+      "labels": [
+        "2"
+      ],
+      "answer": "There are two bars in the graph.",
+      "correct": false,
+      "latency_s": 0.5075603619989124,
+      "generated_tokens": 9,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 53,
+      "query": "What is the total add up value of Both the bars?",
+      "labels": [
+        "59"
+      ],
+      "answer": "The total add up value of both bars is 59%. This can be calculated by adding the recycling rates for Spain (39%) and Canada (20%).",
+      "correct": true,
+      "latency_s": 1.7634860819998721,
+      "generated_tokens": 35,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 54,
+      "query": "What denotes the light blue color bar?",
+      "labels": [
+        "United States"
+      ],
+      "answer": "The light blue color bar represents the United States' net official development assistance from OECD-DAC countries in 2000.",
+      "correct": true,
+      "latency_s": 1.380431129997305,
+      "generated_tokens": 27,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 55,
+      "query": "What's the average value of all bars in the chart?",
+      "labels": [
+        "126.41"
+      ],
+      "answer": "To find the average value, I'll add up all values and divide by the number of bars. The sum is $15.97 billion, and there are 3 bars. Dividing gives $5.325 billion per bar on average. Therefore, the average value of all bars in the chart is $5.325 billion.",
+      "correct": false,
+      "latency_s": 3.641417162001744,
+      "generated_tokens": 74,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 56,
+      "query": "What does the value 2122 represent?",
+      "labels": [
+        "Incidence"
+      ],
+      "answer": "The value 2122 represents the number of new tuberculosis infections in Uganda for the year 2004.",
+      "correct": false,
+      "latency_s": 1.3282523079979,
+      "generated_tokens": 26,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 57,
+      "query": "What is the difference in the value between Incidence and Prevalence?",
+      "labels": [
+        "1092"
+      ],
+      "answer": "The difference in the value between Incidence and Prevalence is 1,122.",
+      "correct": true,
+      "latency_s": 1.0835074969982088,
+      "generated_tokens": 21,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 58,
+      "query": "Which age group has the highest value?",
+      "labels": [
+        "20-24 years old"
+      ],
+      "answer": "The age group with the highest value is 20-24 years old, with a prevalence of drug use disorders of 2%.",
+      "correct": true,
+      "latency_s": 1.4731140200019581,
+      "generated_tokens": 29,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 59,
+      "query": "Find the average of the percentage value of bars greater than 1?",
+      "labels": [
+        "1.608"
+      ],
+      "answer": "To find the average of the percentage values for bars greater than 1:\n\n1. Identify bars above 1%: 20-24 years old (2%), 25-29 years old (1.82%), 15-19 years old (1.58%), 30-34 years old (1.39%)\n2. Sum these values: 2 + 1.82 + 1.58 + 1.39 = 6.79\n3. Divide by the number of bars: 6.79 / 4 = 1.6975\n\n<answer>1.7%</answer>",
+      "correct": false,
+      "latency_s": 7.124978466999892,
+      "generated_tokens": 146,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 60,
+      "query": "Which state shows the highest fertility rate?",
+      "labels": [
+        "Malawi"
+      ],
+      "answer": "Malawi shows the highest fertility rate of 7.16 children per woman in 1988.",
+      "correct": true,
+      "latency_s": 1.230167228000937,
+      "generated_tokens": 24,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 61,
+      "query": "Is the value of Malawi greater then sum of Netherlands and Africa?",
+      "labels": [
+        "Yes"
+      ],
+      "answer": "To determine if Malawi's value is greater than the sum of Netherlands and Africa:\n1. Malawi's value is 7.16\n2. Netherlands' value is 1.56\n3. Africa's value is 6.14\n4. Sum of Netherlands and Africa = 1.56 + 6.14 = 7.70\n5. 7.16 is less than 7.70\n\nFinal Answer: No, Malawi's value is not greater than the sum of Netherlands and Africa.",
+      "correct": false,
+      "latency_s": 5.759439220000786,
+      "generated_tokens": 117,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 62,
+      "query": "What is the value of the largest bar?",
+      "labels": [
+        "1715"
+      ],
+      "answer": "The largest bar represents \"Unsafe water source\" with a value of 1,715.",
+      "correct": true,
+      "latency_s": 1.0895509859983576,
+      "generated_tokens": 21,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 63,
+      "query": "What is the difference between the largest bar and the smallest bar?",
+      "labels": [
+        "1654"
+      ],
+      "answer": "The difference between the largest bar (Unsafe water source) and the smallest bar (Zinc deficiency) is 1,654.",
+      "correct": true,
+      "latency_s": 1.5220404360006796,
+      "generated_tokens": 30,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 64,
+      "query": "Which country has its value 5.97%?",
+      "labels": [
+        "India"
+      ],
+      "answer": "To determine which country has a value of 5.97%, I'll look for the bar representing that percentage on the chart.\n\n<answer>India</answer>",
+      "correct": true,
+      "latency_s": 1.7090819670011115,
+      "generated_tokens": 34,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 65,
+      "query": "Find the total percentage of the three countries having values lower than India?",
+      "labels": [
+        "0.07"
+      ],
+      "answer": "<answer>15.92</answer>\n",
+      "correct": false,
+      "latency_s": 0.6052704369976709,
+      "generated_tokens": 11,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 66,
+      "query": "What is the value of longest bar?",
+      "labels": [
+        "96"
+      ],
+      "answer": "The value of the longest bar is 96.",
+      "correct": true,
+      "latency_s": 0.6525776010021218,
+      "generated_tokens": 12,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 67,
+      "query": "How many bars have value less then 1?",
+      "labels": [
+        "5"
+      ],
+      "answer": "There are four bars that have a value less than 1.",
+      "correct": false,
+      "latency_s": 0.7749840260003111,
+      "generated_tokens": 14,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 68,
+      "query": "Which country represent by pink bar?",
+      "labels": [
+        "Ethiopia"
+      ],
+      "answer": "The pink bar represents Ethiopia.",
+      "correct": true,
+      "latency_s": 0.41174446500008344,
+      "generated_tokens": 7,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 69,
+      "query": "What is the difference between red and blue bar?",
+      "labels": [
+        "0.56"
+      ],
+      "answer": "The difference between the red and blue bars represents the share of the labor force employed in agriculture across different countries in 2005. The red bar for Ethiopia shows the highest percentage at 80.22%, while the blue bar for Cyprus shows the lowest at 4.74%.",
+      "correct": false,
+      "latency_s": 3.073464453998895,
+      "generated_tokens": 62,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 70,
+      "query": "How many response options are below 150 n mi?",
+      "labels": [
+        "2"
+      ],
+      "answer": "To determine how many response options are below 150 n mi:\n1. Compare each option to 150 n mi:\n   - 72 hours: 205 n mi (above 150)\n   - 48 hours: 138.8 n mi (below 150)\n   - 24 hours: 72.1 n mi (below 150)\n2. Count the number of options below 150 n mi:\n   - 24 hours\n3. The total number of response options below 150 n mi is 1.\n\n<answer>1</answer>",
+      "correct": false,
+      "latency_s": 6.7904423190011585,
+      "generated_tokens": 139,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 71,
+      "query": "What is the average of '24 hours' and '48 hours'?",
+      "labels": [
+        "105.45"
+      ],
+      "answer": "To find the average, add the two values (72.1 n mi + 138.8 n mi) and divide by 2. The result is 105.45 n mi.",
+      "correct": true,
+      "latency_s": 2.303602432999469,
+      "generated_tokens": 46,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 72,
+      "query": "Which year mentioned in the heading of the chart?",
+      "labels": [
+        "1911"
+      ],
+      "answer": "The year mentioned in the heading is 1911.",
+      "correct": true,
+      "latency_s": 0.7498342840008263,
+      "generated_tokens": 14,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 73,
+      "query": "How many times political competition data bigger than political participation?",
+      "labels": [
+        "7.02"
+      ],
+      "answer": "To find how many times political competition is bigger than political participation:\n1. Political competition value: 5.9%\n2. Political participation value: 0.84%\n3. Divide political competition by political participation: 5.9 / 0.84 ≈ 7.09\n\n<answer>Political competition is approximately 7.09 times larger than political participation.</answer>",
+      "correct": true,
+      "latency_s": 4.082389660001354,
+      "generated_tokens": 83,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 74,
+      "query": "Find the value of green bar?",
+      "labels": [
+        "1.45"
+      ],
+      "answer": "The value of the green bar is 1.45 million tonnes.",
+      "correct": true,
+      "latency_s": 0.8452539680001792,
+      "generated_tokens": 16,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 75,
+      "query": "How many times green bar greater than Agriculture bar?",
+      "labels": [
+        "8.53"
+      ],
+      "answer": "To find how many times the green bar (Land use change and forestry) is greater than the orange bar (Agriculture), we divide the value of the green bar by the value of the orange bar:\n\n1,450,000 t / 170,000 t = 8.53\n\nTherefore, the green bar is approximately 8.53 times greater than the orange bar.",
+      "correct": true,
+      "latency_s": 4.3799031439994,
+      "generated_tokens": 89,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 76,
+      "query": "What is the value shown for Australia?",
+      "labels": [
+        "0.4368"
+      ],
+      "answer": "The value shown for Australia is 43.68%.",
+      "correct": false,
+      "latency_s": 0.7491492660010408,
+      "generated_tokens": 14,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 77,
+      "query": "What is the average of bottom three bars?",
+      "labels": [
+        "38.08"
+      ],
+      "answer": "To find the average of the bottom three bars:\n1. Identify the values for Argentina (30.22%), Egypt (40.34%), and Australia (43.68%).\n2. Add these values together: 30.22 + 40.34 + 43.68 = 114.24.\n3. Divide the sum by 3 to get the average: 114.24 / 3 = 38.08.\n\n<answer>38.08%</answer>",
+      "correct": true,
+      "latency_s": 5.862296179999248,
+      "generated_tokens": 120,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 78,
+      "query": "What is color of the Age-standardized?",
+      "labels": [
+        "cyan"
+      ],
+      "answer": "The color of the Age-standardized bar is teal.",
+      "correct": false,
+      "latency_s": 0.6554927920005866,
+      "generated_tokens": 12,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 79,
+      "query": "What is the value of the 50-69 years old?",
+      "labels": [
+        "8.88"
+      ],
+      "answer": "The value for the 50-69 years old age group is 8.88.",
+      "correct": true,
+      "latency_s": 1.1334429670023383,
+      "generated_tokens": 22,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 80,
+      "query": "The value is 40.49, find the category?",
+      "labels": [
+        "Kidney cancer"
+      ],
+      "answer": "The category is Kidney cancer.",
+      "correct": true,
+      "latency_s": 0.45942333200218854,
+      "generated_tokens": 8,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 81,
+      "query": "How many times stomach cancer bigger than Kidney cancer data?",
+      "labels": [
+        "10.13"
+      ],
+      "answer": "To find how many times stomach cancer is bigger than kidney cancer, I'll divide the DALYs for stomach cancer by the DALYs for kidney cancer:\n\n410.3 / 40.49 = 10.12\n\nTherefore, stomach cancer is approximately 10.12 times larger than kidney cancer in terms of DALYs.",
+      "correct": false,
+      "latency_s": 3.790881837001507,
+      "generated_tokens": 77,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 82,
+      "query": "Which two places mentioned in the chart?",
+      "labels": [
+        "[Madagascar, Central Europe]"
+      ],
+      "answer": "The two places mentioned in the chart are Madagascar and Central Europe.",
+      "correct": false,
+      "latency_s": 0.748740702001669,
+      "generated_tokens": 14,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 83,
+      "query": "How much times Madagascar greater than Central europe data?",
+      "labels": [
+        "32"
+      ],
+      "answer": "To find how many times Madagascar's death rate is greater than Central Europe's, divide Madagascar's rate (0.96) by Central Europe's rate (0.03).\n\n<math>\n\\frac{0.96}{0.03} = 32\n</math>\n\n<answer>32 times</answer>",
+      "correct": true,
+      "latency_s": 3.4534270969998033,
+      "generated_tokens": 70,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 84,
+      "query": "What is the average maize yield in Syria?",
+      "labels": [
+        "3.251"
+      ],
+      "answer": "The average maize yield in Syria is 3.25 tonnes per hectare per year.",
+      "correct": true,
+      "latency_s": 1.039919902003021,
+      "generated_tokens": 20,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 85,
+      "query": "Find the ratio of highest value and average of two lowest values?",
+      "labels": [
+        "1.841359773"
+      ],
+      "answer": "To find the ratio:\n1. Highest value = 3.25 t (Syria)\n2. Average of two lowest values = (2.5 + 1.03) / 2 = 1.765 t\n3. Ratio = 3.25 / 1.765 ≈ 1.84\n\n<answer>1.84</answer>",
+      "correct": true,
+      "latency_s": 4.22687926800063,
+      "generated_tokens": 85,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 86,
+      "query": "What is Female-to-male ratio to time devoted to unpaid care work in Italy?",
+      "labels": [
+        "3.37"
+      ],
+      "answer": "The female-to-male ratio of time devoted to unpaid care work in Italy is 3.37.",
+      "correct": true,
+      "latency_s": 1.1859851030021673,
+      "generated_tokens": 23,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 87,
+      "query": "What is the average of the values lower than 3 and greater than 2?",
+      "labels": [
+        "2.445"
+      ],
+      "answer": "To find the average, I'll add the values and divide by 2:\n(1.61 + 2.22) / 2 = 1.915\n<answer>1.915</answer>",
+      "correct": false,
+      "latency_s": 2.4777161279998836,
+      "generated_tokens": 50,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 88,
+      "query": "What is the value of largest bar?",
+      "labels": [
+        "396"
+      ],
+      "answer": "The largest bar represents Laos, with a value of 396.",
+      "correct": true,
+      "latency_s": 0.8508522540032573,
+      "generated_tokens": 16,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 89,
+      "query": "Is the add up value of Comoros,Nicargua,Australia,Belgium is gretaer then Laos?",
+      "labels": [
+        "No"
+      ],
+      "answer": "The sum of Comoros (180), Nicaragua (68), Australia (18), and Belgium (14) is 300, which is less than Laos' value of 396. Therefore, the answer is no.",
+      "correct": true,
+      "latency_s": 2.691386496000632,
+      "generated_tokens": 54,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 90,
+      "query": "Which country has longest bar?",
+      "labels": [
+        "Malta"
+      ],
+      "answer": "Malta has the longest bar on the chart.",
+      "correct": true,
+      "latency_s": 0.6092278819996864,
+      "generated_tokens": 11,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 91,
+      "query": "What is the difference of Sweden and Malta?",
+      "labels": [
+        "7.49"
+      ],
+      "answer": "The difference between Sweden and Malta is 7.49. This can be calculated by subtracting the death rate in Sweden (5.01) from the death rate in Malta (12.5).",
+      "correct": true,
+      "latency_s": 2.208619731001818,
+      "generated_tokens": 44,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 92,
+      "query": "How many colors are used in the graph?",
+      "labels": [
+        "1"
+      ],
+      "answer": "The bar chart uses two colors: dark blue for the United States and light blue for the rest of the countries. Therefore, there are two colors used in the graph.",
+      "correct": false,
+      "latency_s": 1.7794906359995366,
+      "generated_tokens": 35,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 93,
+      "query": "What is the sum of largest and smallest bar?",
+      "labels": [
+        "159.85"
+      ],
+      "answer": "<answer>159.85%</answer>",
+      "correct": true,
+      "latency_s": 0.6588770059970557,
+      "generated_tokens": 12,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 94,
+      "query": "How many colors are represented in the bar??",
+      "labels": [
+        "5"
+      ],
+      "answer": "The bar chart uses five different colors to represent the data for each country or region.",
+      "correct": false,
+      "latency_s": 0.9490243929976714,
+      "generated_tokens": 18,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 95,
+      "query": "What is the difference between Industry employment percentage in Iran and Kenya??",
+      "labels": [
+        "26.38"
+      ],
+      "answer": "The difference between Industry employment percentage in Iran and Kenya is 26.38%.",
+      "correct": true,
+      "latency_s": 1.002387214997725,
+      "generated_tokens": 19,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 96,
+      "query": "Which place shows the highest cases of guinea worm?",
+      "labels": [
+        "South Sudan"
+      ],
+      "answer": "To determine which place shows the highest cases of guinea worm, we need to compare the values on the y-axis for each country. The highest value is 43,596, which corresponds to South Sudan. Therefore, South Sudan shows the highest cases of guinea worm disease in 1997.\n\n<answer>South Sudan</answer>",
+      "correct": true,
+      "latency_s": 3.6157564079985605,
+      "generated_tokens": 73,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 97,
+      "query": "Is the sum of Senegal and Central African Republic more then Chad?",
+      "labels": [
+        "No"
+      ],
+      "answer": "The sum of Senegal (4) and Central African Republic (5) is 9, which is less than Chad's 25. Therefore, the sum of Senegal and Central African Republic is not more than Chad.",
+      "correct": true,
+      "latency_s": 2.3423387389993877,
+      "generated_tokens": 47,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 98,
+      "query": "How many colors are represented in the bar??",
+      "labels": [
+        "8"
+      ],
+      "answer": "The bar chart uses seven different colors to represent various age groups and their prevalence of eating disorders in South Asia in 2010.",
+      "correct": false,
+      "latency_s": 1.4822055580007145,
+      "generated_tokens": 29,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 99,
+      "query": "What's the average value of first two bars in the chart??",
+      "labels": [
+        "0.33"
+      ],
+      "answer": "To find the average of the first two bars:\n1. Identify the values for the first two bars: 0.35% and 0.31%.\n2. Add these values: 0.35 + 0.31 = 0.66.\n3. Divide by 2 to get the average: 0.66 / 2 = 0.33.\n\n<answer>0.33%</answer>",
+      "correct": true,
+      "latency_s": 4.683003775000543,
+      "generated_tokens": 95,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 100,
+      "query": "What group has the highest death rate?",
+      "labels": [
+        "70+ years old"
+      ],
+      "answer": "The group with the highest death rate is the \"70+ years old\" category, with a death rate of 275.75 per 100,000 individuals.",
+      "correct": true,
+      "latency_s": 2.102181701000518,
+      "generated_tokens": 42,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 101,
+      "query": "What is the difference between the death rates of 5-14 ears old with the death rate of 70+ years old?",
+      "labels": [
+        "272.62"
+      ],
+      "answer": "The difference between the death rates of 5-14 years old (3.13) and 70+ years old (275.75) is 272.62.",
+      "correct": true,
+      "latency_s": 2.2523306349976338,
+      "generated_tokens": 45,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 102,
+      "query": "Which country represented by Brown bar?",
+      "labels": [
+        "Bangladesh"
+      ],
+      "answer": "Bangladesh",
+      "correct": true,
+      "latency_s": 0.22001146199909272,
+      "generated_tokens": 3,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 103,
+      "query": "What is the difference of largest and smallest bar?",
+      "labels": [
+        "409.13"
+      ],
+      "answer": "The difference between the largest and smallest bars is $411.8 billion - $2.67 billion = $399.13 billion.",
+      "correct": false,
+      "latency_s": 1.7198073180006759,
+      "generated_tokens": 34,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 104,
+      "query": "Which country is indicated by the middle bar?",
+      "labels": [
+        "Namibia"
+      ],
+      "answer": "The middle bar represents Namibia.",
+      "correct": true,
+      "latency_s": 0.461565495999821,
+      "generated_tokens": 8,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 105,
+      "query": "Total values of all the three bars lower than .02?",
+      "labels": [
+        "No"
+      ],
+      "answer": "<answer>Yes</answer>",
+      "correct": false,
+      "latency_s": 0.4124705729991547,
+      "generated_tokens": 7,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 106,
+      "query": "Which country has longest bar?",
+      "labels": [
+        "Iraq"
+      ],
+      "answer": "Iraq has the longest bar in the chart.",
+      "correct": true,
+      "latency_s": 0.5579702239992912,
+      "generated_tokens": 10,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 107,
+      "query": "Does the sum of smallest two bar is greater then the largest bar?",
+      "labels": [
+        "No"
+      ],
+      "answer": "The sum of the smallest two bars (2,229.38 + 13,323.52) is less than the largest bar (28,735.32).",
+      "correct": false,
+      "latency_s": 2.312625192997075,
+      "generated_tokens": 46,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 108,
+      "query": "What is the color of Mexico bar?",
+      "labels": [
+        "Pink"
+      ],
+      "answer": "The color of the Mexico bar is pink.",
+      "correct": true,
+      "latency_s": 0.5570681390017853,
+      "generated_tokens": 10,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 109,
+      "query": "What is the sum of smallest three bar?",
+      "labels": [
+        "3.7"
+      ],
+      "answer": "To find the sum of the smallest three bars:\n1. Identify the smallest three values from the chart.\n2. Add these values together.\n3. The sum is 0.5%.\n\n<answer>0.5%</answer>",
+      "correct": false,
+      "latency_s": 2.3657285300032527,
+      "generated_tokens": 47,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 110,
+      "query": "What is the highest value in the bar graph?",
+      "labels": [
+        "23"
+      ],
+      "answer": "The highest value in the bar graph is 23, which represents Botswana's Global Hunger Index score for 2016.",
+      "correct": true,
+      "latency_s": 1.4905973189997894,
+      "generated_tokens": 29,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 111,
+      "query": "Is Croatia global hunger index extremely alarminhg?",
+      "labels": [
+        "No"
+      ],
+      "answer": "To determine if Croatia's Global Hunger Index is extremely alarming, we need to compare its score to the thresholds provided in the chart:\n1. Extremely alarming: >=50\n2. Alarming: 35-50\n3. Serious: 20-35\n4. Low: under 10\n\nCroatia's score is 5, which falls within the range of 'serious' (20-35). Therefore, it is not considered extremely alarming.\n\n<answer>Croatia's Global Hunger Index is not extremely alarming.</answer>",
+      "correct": true,
+      "latency_s": 5.748018459002196,
+      "generated_tokens": 117,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 112,
+      "query": "How many colors are used in the graph?",
+      "labels": [
+        "1"
+      ],
+      "answer": "The bar chart uses two colors: blue for the bars representing the countries and black for the title and source information. Therefore, there are two colors used in the graph.",
+      "correct": false,
+      "latency_s": 1.7695643810002366,
+      "generated_tokens": 35,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 113,
+      "query": "What is the average of smallest two bars?",
+      "labels": [
+        "13"
+      ],
+      "answer": "<answer>13%</answer>",
+      "correct": true,
+      "latency_s": 0.460120330000791,
+      "generated_tokens": 8,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 114,
+      "query": "What denotes the green color bar ??",
+      "labels": [
+        "Sub-Saharan Africa"
+      ],
+      "answer": "Sub-Saharan Africa",
+      "correct": true,
+      "latency_s": 0.2674754830004531,
+      "generated_tokens": 4,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 115,
+      "query": "Find out the average of the bottom three countries ??",
+      "labels": [
+        "0.0593"
+      ],
+      "answer": "<answer>5.7%</answer>",
+      "correct": false,
+      "latency_s": 0.5082037720021617,
+      "generated_tokens": 9,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 116,
+      "query": "What country is represented by the Red bar?",
+      "labels": [
+        "Libya"
+      ],
+      "answer": "Libya",
+      "correct": true,
+      "latency_s": 0.21867625400045654,
+      "generated_tokens": 3,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 117,
+      "query": "What is the difference between the largest bar and the smallest bar?",
+      "labels": [
+        "0.092"
+      ],
+      "answer": "The difference between the largest bar (United States) and the smallest bar (Cyprus) is 19.2%.",
+      "correct": false,
+      "latency_s": 1.3324015389989654,
+      "generated_tokens": 26,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 118,
+      "query": "Which animal is represented by longest bar?",
+      "labels": [
+        "Cattle"
+      ],
+      "answer": "The animal represented by the longest bar is cattle.",
+      "correct": true,
+      "latency_s": 0.6059809149992361,
+      "generated_tokens": 11,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 119,
+      "query": "What is difference of value of Paddy rice and Wheat?",
+      "labels": [
+        "6.5"
+      ],
+      "answer": "<answer>6.5%</answer>",
+      "correct": true,
+      "latency_s": 0.5086327440003515,
+      "generated_tokens": 9,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 120,
+      "query": "How many region are shown in the chart?",
+      "labels": [
+        "7"
+      ],
+      "answer": "The chart shows seven regions: Northern America, Europe, World, South America, Asia, Caribbean, and Africa.",
+      "correct": false,
+      "latency_s": 1.235483631000534,
+      "generated_tokens": 24,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 121,
+      "query": "What the difference in value between Asia and Caribbean?",
+      "labels": [
+        "1.18"
+      ],
+      "answer": "Asia has 1.19 grams more protein supply per person per day than the Caribbean.",
+      "correct": true,
+      "latency_s": 1.043786606998765,
+      "generated_tokens": 20,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 122,
+      "query": "What is the death rate from drug use disorders in Thailand?",
+      "labels": [
+        "0.77"
+      ],
+      "answer": "The death rate from drug use disorders in Thailand is 0.77 per 100,000 individuals.",
+      "correct": true,
+      "latency_s": 1.3806888660001277,
+      "generated_tokens": 27,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 123,
+      "query": "Is the average value of Andean Latin America and Cambodia more than the value of Thailand?",
+      "labels": [
+        "Yes"
+      ],
+      "answer": "The average value of Andean Latin America and Cambodia is higher than the value of Thailand.",
+      "correct": false,
+      "latency_s": 0.9953668519992789,
+      "generated_tokens": 19,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 124,
+      "query": "What is the number of undernourished people in Southern Asia as of 2000 ( in millions)?",
+      "labels": [
+        "264.5"
+      ],
+      "answer": "The number of undernourished people in Southern Asia as of 2000 was 264.5 million.",
+      "correct": true,
+      "latency_s": 1.4325412830003188,
+      "generated_tokens": 28,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 125,
+      "query": "What is the sum of undernourished people in Low Income economies and Sub-Saharan Africa combined (in millions)?",
+      "labels": [
+        "341.9"
+      ],
+      "answer": "The sum of undernourished people in Low Income economies and Sub-Saharan Africa combined is 349.9 million. This can be calculated by adding the values for Low income economies (161.1 million) and Sub-Saharan Africa (180.8 million).",
+      "correct": false,
+      "latency_s": 2.9402494880014274,
+      "generated_tokens": 59,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 126,
+      "query": "What is the value of Pink bar?",
+      "labels": [
+        "21524"
+      ],
+      "answer": "The pink bar represents Morocco's number of neonatal deaths in 1997, which is 21,524.",
+      "correct": true,
+      "latency_s": 1.4793039169999247,
+      "generated_tokens": 29,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    },
+    {
+      "index": 127,
+      "query": "Does the Saudi Arabia and Australasia has same value ?",
+      "labels": [
+        "No"
+      ],
+      "answer": "No, Saudi Arabia has a higher number of neonatal deaths than Australasia.",
+      "correct": true,
+      "latency_s": 0.9016158910017111,
+      "generated_tokens": 17,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 630,
+      "kept_visual_counts": [
+        630
+      ]
+    }
+  ]
+}

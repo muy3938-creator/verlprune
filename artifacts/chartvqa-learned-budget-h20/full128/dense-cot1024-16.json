@@ -1,0 +1,283 @@
+{
+  "metrics": {
+    "model": "/workspace/models/Qwen2.5-VL-3B-Instruct",
+    "adapter": null,
+    "dataset": "/workspace/data/chartvqa",
+    "split": "val",
+    "limit": 16,
+    "mode": "baseline",
+    "keep_ratio": 0.1,
+    "top_p": 0.95,
+    "min_keep_ratio": 0.05,
+    "max_keep_ratio": 0.5,
+    "layer": 0,
+    "max_new_tokens": 1024,
+    "stop_at_answer_tag": true,
+    "accuracy": 0.5,
+    "mean_latency_s": 7.539478966250726,
+    "mean_kept_visual_tokens": 205.75,
+    "mean_original_visual_tokens": 205.75,
+    "mean_retention_ratio": 1.0,
+    "mean_generated_tokens": 274.3125,
+    "max_generated_tokens": 588,
+    "max_length_hit_rate": 0.0
+  },
+  "records": [
+    {
+      "index": 0,
+      "query": "What's the color of graph with 56 as the highest value?",
+      "labels": [
+        "Blue"
+      ],
+      "answer": "To determine the color of the graph with the highest value of 56, let's follow these steps:\n\n1. Identify the highest value on the graph: The highest value is 56, which appears in the U.S. data line.\n\n2. Locate the U.S. data line on the chart: The U.S. data line is represented by blue circles (●).\n\n3. Determine the color of the U.S. data line: The U.S. data line is colored blue.\n\n4. Confirm that this is the only data line with a value of 56: There are no other data lines with a value of 56.\n\n5. Conclude the color of the graph with the highest value: The color of the graph with the highest value of 56 is blue.\n\nTherefore, the color of the graph with the highest value of 56 is blue.",
+      "correct": true,
+      "latency_s": 5.456124044001626,
+      "generated_tokens": 181,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 322,
+      "kept_visual_counts": [
+        322
+      ]
+    },
+    {
+      "index": 1,
+      "query": "In which year the difference between blue and green graph 1?",
+      "labels": [
+        "2018"
+      ],
+      "answer": "To determine in which year the difference between the blue (U.S.) and green (Germany) graphs is at its maximum, we need to:\n\n1. Identify the values for each country in each year from the graph.\n2. Calculate the difference between these values for each year.\n3. Compare these differences to find the highest one.\n4. Determine the corresponding year for this maximum difference.\n\nStep 1: The values for the U.S. (blue line) range from approximately 26% in 2008 to around 56% in 2006.\nThe values for Germany (green line) range from about 39% in 2008 to around 52% in 2006.\n\nStep 2: Calculating the differences:\n- 2006: 56 - 52 = 4\n- 2007: 34 - 39 = -5\n- 2008: 26 - 39 = -13\n- 2009: 29 - 49 = -20\n- 2010: 30 - 49 = -19\n- 2011: 34 - 51 = -17\n- 2012: 29 - 40 = -11\n- 2013: 28 - 37 = -9\n- 2014: 28 - 35 = -7\n- 2015: 34 - 38 = -4\n- 2016: 28 - 37 = -9\n- 2017: 34 - 44 = -10\n- 2018: 39 - 38 = 1\n\nStep 3: Comparing the differences, the highest value is -13, which occurred in 2008.\n\nStep 4: The year with the highest difference is 2008.\n\nTherefore, the year when the difference between the blue and green graphs was at its maximum is 2008.\n\n<answer>2008</answer>",
+      "correct": true,
+      "latency_s": 13.034706271002506,
+      "generated_tokens": 479,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 322,
+      "kept_visual_counts": [
+        322
+      ]
+    },
+    {
+      "index": 2,
+      "query": "What does the blue line represent?",
+      "labels": [
+        "Not too much/not at all"
+      ],
+      "answer": "To determine what the blue line represents in the chart, let's analyze the data step by step:\n\n1. The blue line is labeled \"Not too much/ not at all\" on the graph.\n2. This label indicates that the blue line corresponds to the percentage of respondents who believe the U.S. takes the interest of their country into account in making international policy decisions.\n3. The blue line shows a trend over time, starting from 71% in 2007 and decreasing to 60% in 2013, then increasing slightly to 72% in 2018.\n\nTherefore, the blue line represents the percentage of respondents who believe the U.S. takes the interest of other countries' interests into account in making international policy decisions.\n\n<answer>The blue line represents the percentage of respondents who believe the U.S. takes the interest of other countries' interests into account in making international policy decisions.</answer>",
+      "correct": false,
+      "latency_s": 5.305606256999454,
+      "generated_tokens": 193,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 255,
+      "kept_visual_counts": [
+        255
+      ]
+    },
+    {
+      "index": 3,
+      "query": "What is the max value of blue line?",
+      "labels": [
+        "0.72"
+      ],
+      "answer": "To determine the maximum value of the blue line in the chart, we need to follow these steps:\n\n1. Identify the blue line in the chart. It represents the percentage of people who believe the U.S. takes the interest of their country into account when making international policy decisions.\n\n2. Observe the y-axis of the chart, which ranges from 0% to 100%. This indicates that the blue line reaches its highest point on this scale.\n\n3. Locate the highest point on the blue line within the range of 0% to 100%. The highest point on the blue line is at approximately 72%.\n\n4. Confirm that this is indeed the maximum value by checking if there are any other points on the blue line that are higher than 72%.\n\n5. Conclude that the maximum value of the blue line is 72%.\n\nTherefore, the max value of the blue line is 72%.",
+      "correct": false,
+      "latency_s": 5.2627992300003825,
+      "generated_tokens": 192,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 255,
+      "kept_visual_counts": [
+        255
+      ]
+    },
+    {
+      "index": 4,
+      "query": "What's the percentage of respondents who say Job is a top priority for the president and Congress in 2016?",
+      "labels": [
+        "68"
+      ],
+      "answer": "To determine the percentage of respondents who say jobs are a top priority for the president and Congress in 2016, I'll follow these steps:\n\n1. Identify the relevant data point on the graph for 2016.\n2. Locate the line representing \"Jobs\" on the graph.\n3. Find the value at the intersection of the 2016 horizontal axis and the Jobs line.\n4. Read the percentage directly from the graph.\n\nStep 1: The relevant data point for 2016 is found on the graph.\n\nStep 2: The line representing \"Jobs\" is clearly visible on the graph.\n\nStep 3: At the intersection of the 2016 horizontal axis (which represents 2016) and the Jobs line, the percentage is shown.\n\nStep 4: Reading the percentage directly from the graph, we see that 68% of respondents say jobs are a top priority for the president and Congress in 2016.\n\nTherefore, the percentage of respondents who say jobs are a top priority for the president and Congress in 2016 is 68%.",
+      "correct": true,
+      "latency_s": 6.409250431002874,
+      "generated_tokens": 234,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 165,
+      "kept_visual_counts": [
+        165
+      ]
+    },
+    {
+      "index": 5,
+      "query": "Which line has the lowest value of 71%?",
+      "labels": [
+        "Economy"
+      ],
+      "answer": "To determine which line has the lowest value of 71%, let's analyze the data step by step:\n\n1. First, we need to identify the line that represents \"Economy\" on the graph. This line is represented by the orange circles.\n\n2. Next, we look at the data points for the \"Economy\" line:\n   - In 2010, the percentage was 83%\n   - In 2011, it was 81%\n   - In 2012, it was 80%\n   - In 2013, it was 74%\n   - In 2014, it was 63%\n   - In 2015, it was 68%\n   - In 2016, it was 73%\n   - In 2017, it was 71%\n   - In 2018, it was 62%\n\n3. We can see that the \"Economy\" line reaches its highest point in 2017 at 71%.\n\n4. Now, let's check the other lines to ensure they don't have a higher or lower value of 71%:\n   - The \"Budget deficit\" line (gray circles) reaches 71% in 2017.\n   - The \"Jobs\" line (dark brown circles) does not reach 71% at any point.\n\n5. Comparing these values, we can confirm that both the \"Budget deficit\" and \"Economy\" lines reach 71% in 2017, but the \"Budget deficit\" line is slightly higher than the \"Economy\" line.\n\nTherefore, the line that has the lowest value of 71% is the \"Economy\" line.\n\n<answer>The line representing \"Economy\" has the lowest value of 71%. </answer>",
+      "correct": true,
+      "latency_s": 10.96152748500026,
+      "generated_tokens": 402,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 165,
+      "kept_visual_counts": [
+        165
+      ]
+    },
+    {
+      "index": 6,
+      "query": "What is the unfavourable value in 2014?",
+      "labels": [
+        "64"
+      ],
+      "answer": "To determine the unfavourable value for Ennahda in 2014, I'll follow these steps:\n\n1. Identify the relevant data point on the graph:\n   The line representing unfavorable views intersects the 2014 axis at 64%.\n\n2. Confirm that this is the correct year:\n   The x-axis clearly shows 2014 as the most recent year represented.\n\n3. Verify the source of the data:\n   The source mentioned is the Spring 2014 Global Attitudes survey, which aligns with the timeframe shown on the graph.\n\n4. Conclude based on the information provided:\n   Since the graph directly indicates the unfavorable view for Ennahda in 2014 as 64%, there's no need to perform additional calculations or make assumptions.\n\nTherefore, the unfavourable value for Ennahda in 2014 is 64%.",
+      "correct": true,
+      "latency_s": 5.1611169280004106,
+      "generated_tokens": 188,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 143,
+      "kept_visual_counts": [
+        143
+      ]
+    },
+    {
+      "index": 7,
+      "query": "What is the median value of favourable line in the graph?",
+      "labels": [
+        "40"
+      ],
+      "answer": "To determine the median value of the favorable line in the graph, we need to follow these steps:\n\n1. Identify the values on the favorable line:\n   - In 2012, the favorable value is 65.\n   - In 2013, the favorable value is 40.\n   - In 2014, the favorable value is 31.\n\n2. Arrange these values in ascending order:\n   - 31 (2014)\n   - 40 (2013)\n   - 65 (2012)\n\n3. Find the middle value in this ordered list:\n   - Since there are three values, the median is the second value in the ordered list.\n\n4. The second value in the ordered list is 40.\n\nTherefore, the median value of the favorable line in the graph is 40.\n\n<answer>40</answer>",
+      "correct": true,
+      "latency_s": 5.257363171000179,
+      "generated_tokens": 192,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 143,
+      "kept_visual_counts": [
+        143
+      ]
+    },
+    {
+      "index": 8,
+      "query": "Which answer response has the highest value on this graph?",
+      "labels": [
+        "Disapprove"
+      ],
+      "answer": "To determine which answer response has the highest value on this graph, I'll follow these steps:\n\n1. Examine the y-axis labels to identify the two main categories:\n   - Approve\n   - Disapprove\n\n2. Look at each data point for both categories across the months:\n   - Approve: 52, 51, 47, 46, 43, 43, 46, 49, 51, 43, 45, 43\n   - Disapprove: 40, 46, 49, 43, 46, 44, 49, 53, 49, 49, 49, 43\n\n3. Compare the highest values for each category:\n   - Approve: 53 (in November 2013)\n   - Disapprove: 53 (also in November 2013)\n\n4. Determine which category has the higher overall average:\n   - Approve: (52 + 51 + 47 + 46 + 43 + 43 + 46 + 49 + 51 + 43 + 45 + 43) / 12 = 48.58\n   - Disapprove: (40 + 46 + 49 + 43 + 46 + 44 + 49 + 53 + 49 + 49 + 49 + 43) / 12 = 47.58\n\n5. Conclude that the highest value is for the \"Approve\" category, which reached 53 in November 2013.\n\nTherefore, the answer is:\n<answer>Approve</answer>",
+      "correct": false,
+      "latency_s": 10.794778832001612,
+      "generated_tokens": 394,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 176,
+      "kept_visual_counts": [
+        176
+      ]
+    },
+    {
+      "index": 9,
+      "query": "How many data points on the disapprove line are above 50?",
+      "labels": [
+        "2"
+      ],
+      "answer": "To determine how many data points on the disapprove line are above 50, we need to examine each point on the graph:\n\n1. January: 47 (below 50)\n2. February: 46 (below 50)\n3. March: 43 (below 50)\n4. April: 43 (below 50)\n5. May: 49 (above 50)\n6. June: 46 (below 50)\n7. July: 44 (below 50)\n8. August: 49 (above 50)\n9. September: 51 (above 50)\n10. October: 53 (above 50)\n11. November: 49 (below 50)\n12. December: 49 (below 50)\n\nCounting the points above 50:\n- May: 49\n- August: 49\n- September: 51\n- October: 53\n\nThere are 4 data points on the disapprove line that are above 50. \n\nTherefore, the answer is 4.",
+      "correct": true,
+      "latency_s": 6.8773036540005705,
+      "generated_tokens": 251,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 176,
+      "kept_visual_counts": [
+        176
+      ]
+    },
+    {
+      "index": 10,
+      "query": "Which indicator remains all time lowest from Dec. 2008 to Sep. 2011?",
+      "labels": [
+        "Mostly good news"
+      ],
+      "answer": "To determine which indicator remains all-time lowest from December 2008 to September 2011, we need to analyze each line on the graph:\n\n1. **\"Mostly good news\"**: This line starts at 19 in December 2008 and fluctuates around this value throughout the period. It does not drop below 19 during the entire time frame.\n\n2. **\"Mostly bad news\"**: This line starts at 80 in December 2008 and drops significantly to 35 in September 2011. It is consistently lower than \"Mostly good news\" throughout the period.\n\n3. **\"Mix of good and bad news\"**: This line starts at 67 in December 2008 and fluctuates between 41 and 68. It does not reach as low as \"Mostly bad news\".\n\nComparing these three lines, it's clear that \"Mostly bad news\" has remained consistently lower than both \"Mostly good news\" and \"Mix of good and bad news\" throughout the entire period.\n\nTherefore, the indicator that remains all-time lowest from December 2008 to September 2011 is \"Mostly bad news\".",
+      "correct": true,
+      "latency_s": 7.112862648998998,
+      "generated_tokens": 259,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 195,
+      "kept_visual_counts": [
+        195
+      ]
+    },
+    {
+      "index": 11,
+      "query": "How much value of 'Mostly bad news' increased from Jan. 2011 to Sept. 2011?",
+      "labels": [
+        "37"
+      ],
+      "answer": "To determine how much the value of 'Mostly bad news' increased from January 2011 to September 2011, we need to follow these steps:\n\n1. Identify the value for 'Mostly bad news' in January 2011:\n   - The line for 'Mostly bad news' reaches approximately 33 in January 2011.\n\n2. Identify the value for 'Mostly bad news' in September 2011:\n   - The line for 'Mostly bad news' reaches approximately 46 in September 2011.\n\n3. Calculate the difference between these two values:\n   - Difference = Value in September 2011 - Value in January 2011\n   - Difference = 46 - 33 = 13\n\n4. Verify that this calculation is correct by checking the trend line:\n   - The trend line shows a clear upward movement from January 2011 to September 2011, confirming the increase.\n\n5. Conclude the amount of increase:\n   - The value of 'Mostly bad news' increased by 13 points from January 2011 to September 2011.\n\nTherefore, the value of 'Mostly bad news' increased by 13 points from January 2011 to September 2011.",
+      "correct": false,
+      "latency_s": 7.915138625001418,
+      "generated_tokens": 289,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 195,
+      "kept_visual_counts": [
+        195
+      ]
+    },
+    {
+      "index": 12,
+      "query": "When does the red line reach the peak?",
+      "labels": [
+        "44538"
+      ],
+      "answer": "To determine when the red line reaches its peak, I'll follow these steps:\n\n1. Examine the red line on the graph:\n   The red line represents \"Mostly bad news\" sentiment.\n\n2. Identify the highest point on the red line:\n   The red line peaks at approximately 80 in December 2008.\n\n3. Confirm if this is the only peak:\n   After checking the trend, it appears there's no other higher point on the red line.\n\n4. Verify the date of the peak:\n   The peak occurs in December 2008.\n\n5. Conclude based on the information provided:\n   The red line reaches its peak in December 2008.\n\nTherefore, the red line reaches the peak in December 2008.",
+      "correct": false,
+      "latency_s": 4.409662181002204,
+      "generated_tokens": 161,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 195,
+      "kept_visual_counts": [
+        195
+      ]
+    },
+    {
+      "index": 13,
+      "query": "What's the total sum of peak points of all three lines?",
+      "labels": [
+        "155"
+      ],
+      "answer": "To find the total sum of the peak points of all three lines, I'll add together the highest values for each line:\n\n1. For the \"Mostly good news\" line, the peak point is 5 in July 2010.\n2. For the \"Mostly bad news\" line, the peak point is 46 in September 2011.\n3. For the \"Mix of good and bad news\" line, the peak point is 68 in January 2011.\n\nNow, I'll add these peak points together:\n5 + 46 + 68 = 120\n\nTherefore, the total sum of the peak points of all three lines is 120.\n\n<answer>120</answer>",
+      "correct": false,
+      "latency_s": 4.396636346999003,
+      "generated_tokens": 160,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 195,
+      "kept_visual_counts": [
+        195
+      ]
+    },
+    {
+      "index": 14,
+      "query": "When does the yellow line reach the peak?",
+      "labels": [
+        "44207"
+      ],
+      "answer": "To determine when the yellow line reaches its peak, I'll follow these steps:\n\n1. Examine the y-axis labels to identify the scale of measurement.\n2. Look for the highest point on the yellow line.\n3. Identify the corresponding date at that peak.\n4. Confirm if this is indeed the highest point throughout the entire data range.\n5. Provide the exact date when the peak occurs.\n\nStep 1: The y-axis shows percentages, indicating that we're looking at a percentage scale.\n\nStep 2: The yellow line peaks at approximately 68% on the y-axis.\n\nStep 3: Looking at the x-axis, we can see that this peak occurs in January 2011.\n\nStep 4: To ensure this is the highest point, I'll check other dates:\n- December 2008: 19%\n- January 2009: 30%\n- February 2009: 31%\n- March 2009: 41%\n- April 2009: 56%\n- May 2009: 64%\n- June 2009: 67%\n- July 2009: 68%\n- August 2009: 67%\n- September 2009: 65%\n- October 2009: 54%\n- November 2009: 50%\n- December 2009: 46%\n- January 2010: 42%\n- February 2010: 29%\n- March 2010: 5%\n- April 2010: 3%\n- May 2010: 3%\n- June 2010: 2%\n- July 2010: 1%\n- August 2010: 1%\n- September 2010: 1%\n- October 2010: 1%\n- November 2010: 1%\n- December 2010: 1%\n- January 2011: 2%\n- February 2011: 3%\n- March 2011: 5%\n- April 2011: 7%\n- May 2011: 5%\n- June 2011: 2%\n- July 2011: 1%\n- August 2011: 1%\n\nThe peak of 68% is indeed the highest point reached by the yellow line.\n\nStep 5: The yellow line reaches its peak in January 2011.\n\n<answer>January 2011</answer>",
+      "correct": false,
+      "latency_s": 16.092297957999108,
+      "generated_tokens": 588,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 195,
+      "kept_visual_counts": [
+        195
+      ]
+    },
+    {
+      "index": 15,
+      "query": "What's the total sum of peak points of green and red lines?",
+      "labels": [
+        "87"
+      ],
+      "answer": "To find the total sum of peak points of the green (mostly good news) and red (mostly bad news) lines, we need to identify the highest values for each line from the graph and then add them together.\n\nStep 1: Identify the peak point of the green line (mostly good news).\nThe peak point of the green line is at 30% in August 2011.\n\nStep 2: Identify the peak point of the red line (mostly bad news).\nThe peak point of the red line is at 68% in January 2011.\n\nStep 3: Add the peak points together.\n30% (green) + 68% (red) = 98%\n\nStep 4: Verify that no other peak points exist for either line beyond these two.\nNo other peak points are visible on the graph for either line.\n\nStep 5: Confirm the calculation.\nThe total sum of peak points of the green and red lines is indeed 98%.\n\nTherefore, the total sum of peak points of the green and red lines is 98%.",
+      "correct": false,
+      "latency_s": 6.184489397001016,
+      "generated_tokens": 226,
+      "hit_max_new_tokens": false,
+      "original_visual_tokens": 195,
+      "kept_visual_counts": [
+        195
+      ]
+    }
+  ]
+}

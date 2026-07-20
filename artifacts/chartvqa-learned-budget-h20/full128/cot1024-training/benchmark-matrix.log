@@ -1,0 +1,108 @@
+Generating val split: 0 examples [00:00, ? examples/s]Generating val split: 1600 examples [00:00, 14971.80 examples/s]Generating val split: 1920 examples [00:00, 15870.76 examples/s]
+`torch_dtype` is deprecated! Use `dtype` instead!
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards: 100%|██████████| 2/2 [00:00<00:00, 47.08it/s]
+The following generation flags are not valid and may be ignored: ['temperature']. Set `TRANSFORMERS_VERBOSITY=info` for more details.
+{"index": 0, "correct": true, "answer": "To determine the color of the graph with the highest value of 56, let's follow these steps:\n\n1. Identify the highest value on the graph: The highest value is 56"}
+{"index": 1, "correct": true, "answer": "To determine in which year the difference between the blue (U.S.) and green (Germany) graphs is at its maximum, we need to:\n\n1. Identify the values for each cou"}
+{"index": 2, "correct": false, "answer": "To determine what the blue line represents in the chart, let's analyze the data step by step:\n\n1. The blue line is labeled \"Not too much/ not at all\" on the gra"}
+{"index": 3, "correct": false, "answer": "To determine the maximum value of the blue line in the chart, we need to follow these steps:\n\n1. Identify the blue line in the chart. It represents the percenta"}
+{"index": 4, "correct": true, "answer": "To determine the percentage of respondents who say jobs are a top priority for the president and Congress in 2016, I'll follow these steps:\n\n1. Identify the rel"}
+{"index": 5, "correct": true, "answer": "To determine which line has the lowest value of 71%, let's analyze the data step by step:\n\n1. First, we need to identify the line that represents \"Economy\" on t"}
+{"index": 6, "correct": true, "answer": "To determine the unfavourable value for Ennahda in 2014, I'll follow these steps:\n\n1. Identify the relevant data point on the graph:\n   The line representing un"}
+{"index": 7, "correct": true, "answer": "To determine the median value of the favorable line in the graph, we need to follow these steps:\n\n1. Identify the values on the favorable line:\n   - In 2012, th"}
+{"index": 8, "correct": false, "answer": "To determine which answer response has the highest value on this graph, I'll follow these steps:\n\n1. Examine the y-axis labels to identify the two main categori"}
+{"index": 9, "correct": true, "answer": "To determine how many data points on the disapprove line are above 50, we need to examine each point on the graph:\n\n1. January: 47 (below 50)\n2. February: 46 (b"}
+{"index": 10, "correct": true, "answer": "To determine which indicator remains all-time lowest from December 2008 to September 2011, we need to analyze each line on the graph:\n\n1. **\"Mostly good news\"**"}
+{"index": 11, "correct": false, "answer": "To determine how much the value of 'Mostly bad news' increased from January 2011 to September 2011, we need to follow these steps:\n\n1. Identify the value for 'M"}
+{"index": 12, "correct": false, "answer": "To determine when the red line reaches its peak, I'll follow these steps:\n\n1. Examine the red line on the graph:\n   The red line represents \"Mostly bad news\" se"}
+{"index": 13, "correct": false, "answer": "To find the total sum of the peak points of all three lines, I'll add together the highest values for each line:\n\n1. For the \"Mostly good news\" line, the peak p"}
+{"index": 14, "correct": false, "answer": "To determine when the yellow line reaches its peak, I'll follow these steps:\n\n1. Examine the y-axis labels to identify the scale of measurement.\n2. Look for the"}
+{"index": 15, "correct": false, "answer": "To find the total sum of peak points of the green (mostly good news) and red (mostly bad news) lines, we need to identify the highest values for each line from "}
+{
+  "model": "/workspace/models/Qwen2.5-VL-3B-Instruct",
+  "adapter": null,
+  "dataset": "/workspace/data/chartvqa",
+  "split": "val",
+  "limit": 16,
+  "mode": "baseline",
+  "keep_ratio": 0.1,
+  "top_p": 0.95,
+  "min_keep_ratio": 0.05,
+  "max_keep_ratio": 0.5,
+  "layer": 0,
+  "max_new_tokens": 1024,
+  "stop_at_answer_tag": true,
+  "accuracy": 0.5,
+  "mean_latency_s": 7.539478966250726,
+  "mean_kept_visual_tokens": 205.75,
+  "mean_original_visual_tokens": 205.75,
+  "mean_retention_ratio": 1.0,
+  "mean_generated_tokens": 274.3125,
+  "max_generated_tokens": 588,
+  "max_length_hit_rate": 0.0
+}
+`torch_dtype` is deprecated! Use `dtype` instead!
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards: 100%|██████████| 2/2 [00:00<00:00, 46.92it/s]
+The following generation flags are not valid and may be ignored: ['temperature']. Set `TRANSFORMERS_VERBOSITY=info` for more details.
+{"index": 0, "correct": true, "answer": "To determine the color of the graph with the highest value of 56, let's follow these steps:\n\n1. Identify the highest value on the graph: The highest value is 56"}
+{"index": 1, "correct": false, "answer": "To determine in which year the difference between the blue (U.S.) and green (Germany) graphs is at its maximum, we need to:\n\n1. Identify the highest point on ea"}
+{"index": 2, "correct": false, "answer": "To determine what the blue line represents in the chart, let's analyze the data step by step:\n\n1. The x-axis of the chart is labeled \"Belief that U.S. considers"}
+{"index": 3, "correct": false, "answer": "To determine the maximum value of the blue line in the chart, we need to follow these steps:\n\n1. Identify the blue line in the chart. It represents the percenta"}
+{"index": 4, "correct": false, "answer": "To determine the percentage of respondents who say jobs are a top priority for the president and Congress in 2016, I'll follow these steps:\n\n1. Identify the rel"}
+{"index": 5, "correct": true, "answer": "To determine which line has the lowest value of 71%, let's analyze the data step by step:\n\nStep 1: Identify the lines on the graph that represent \"Economy\" and "}
+{"index": 6, "correct": false, "answer": "To determine the unfavourable value for the year 2014, I'll follow these steps:\n\n1. Examine the graph to identify the relevant data point for 2014.\n2. Locate th"}
+{"index": 7, "correct": false, "answer": "To determine the median value of the favorable line in the graph, we need to follow these steps:\n\n1. Identify the values on the y-axis:\n   - The y-axis ranges f"}
+{"index": 8, "correct": true, "answer": "To determine which answer response has the highest value on this graph, I'll follow these steps:\n\n1. Examine the y-axis labels to identify the two main categori"}
+{"index": 9, "correct": true, "answer": "To determine how many data points on the disapprove line are above 50, we need to examine each point on the graph:\n\n1. The first data point in January 2013 show"}
+{"index": 10, "correct": false, "answer": "To determine which indicator remains at its lowest point throughout the given period, we need to compare the values of each indicator over time:\n\n1. **Identify "}
+{"index": 11, "correct": false, "answer": "To determine how much the value of 'Mostly bad news' increased from January 2011 to September 2011, we need to follow these steps:\n\n1. Identify the value for 'M"}
+{"index": 12, "correct": false, "answer": "To determine when the red line reaches its peak, I'll follow these steps:\n\n1. Examine the red line on the graph:\n   The red line represents \"Mix of good and bad"}
+{"index": 13, "correct": false, "answer": "To find the total sum of the peak points of all three lines, I'll add together the highest values for each line:\n\n1. For the \"Mix of good and bad news\" line:\n  "}
+{"index": 14, "correct": false, "answer": "To determine when the yellow line reaches its peak, I'll follow these steps:\n\n1. Examine the y-axis labels to identify the scale of measurement.\n2. Look for the"}
+{"index": 15, "correct": false, "answer": "To find the total sum of peak points of the green (mix of good news) and red (negative news) lines, I'll follow these steps:\n\n1. Identify the peak points for ea"}
+{
+  "model": "/workspace/models/Qwen2.5-VL-3B-Instruct",
+  "adapter": null,
+  "dataset": "/workspace/data/chartvqa",
+  "split": "val",
+  "limit": 16,
+  "mode": "top_p",
+  "keep_ratio": 0.1,
+  "top_p": 0.8,
+  "min_keep_ratio": 0.05,
+  "max_keep_ratio": 0.5,
+  "layer": 0,
+  "max_new_tokens": 1024,
+  "stop_at_answer_tag": true,
+  "accuracy": 0.25,
+  "mean_latency_s": 10.560490569937201,
+  "mean_kept_visual_tokens": 80.43008370260955,
+  "mean_original_visual_tokens": 205.75,
+  "mean_retention_ratio": 0.40206361481559155,
+  "mean_generated_tokens": 254.875,
+  "max_generated_tokens": 643,
+  "max_length_hit_rate": 0.0
+}
+`torch_dtype` is deprecated! Use `dtype` instead!
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards: 100%|██████████| 2/2 [00:00<00:00, 47.70it/s]
+/usr/local/lib/python3.12/dist-packages/peft/config.py:280: UserWarning: The configuration file contains a `runtime_config` key. This is ignored. Runtime configurations are only valid at runtime.
+  warnings.warn(
+Traceback (most recent call last):
+  File "/workspace/scripts/benchmark_chartvqa.py", line 316, in <module>
+    main()
+  File "/workspace/scripts/benchmark_chartvqa.py", line 181, in main
+    model = PeftModel.from_pretrained(model, args.adapter)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/peft/peft_model.py", line 560, in from_pretrained
+    model = MODEL_TYPE_TO_PEFT_MODEL_MAPPING[config.task_type](
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/peft/peft_model.py", line 1885, in __init__
+    super().__init__(model, peft_config, adapter_name, **kwargs)
+  File "/usr/local/lib/python3.12/dist-packages/peft/peft_model.py", line 129, in __init__
+    self.base_model = cls(model, {adapter_name: peft_config}, adapter_name)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/peft/tuners/tuners_utils.py", line 298, in __init__
+    self.inject_adapter(self.model, adapter_name, low_cpu_mem_usage=low_cpu_mem_usage, state_dict=state_dict)
+  File "/usr/local/lib/python3.12/dist-packages/peft/tuners/tuners_utils.py", line 880, in inject_adapter
+    raise ValueError(error_msg)
+ValueError: Target modules {'a', 'g', 'p', '_', 'o', 't', 'k', ')', '*', 'q', 'j', 'm', 'n', 'e', 'l', 'u', 'w', 'd', 'r', '.', 'y', '|', 'v', '(', 's'} not found in the base model. Please check the target modules and try again.
