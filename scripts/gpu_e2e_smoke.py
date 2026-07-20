@@ -11,17 +11,61 @@ import argparse
 import json
 import os
 import statistics
+import subprocess
+import threading
 import time
 from pathlib import Path
 
 
-def _make_image(path: Path):
+class GPUMemorySampler:
+    def __init__(self, interval_s: float = 0.02) -> None:
+        self.interval_s = interval_s
+        self.baseline_mib = self._read_mib()
+        self.peak_mib = self.baseline_mib
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+
+    @staticmethod
+    def _read_mib() -> int:
+        output = subprocess.check_output(
+            [
+                "nvidia-smi",
+                "--query-compute-apps=used_memory",
+                "--format=csv,noheader,nounits",
+            ],
+            text=True,
+        )
+        return sum(int(line) for line in output.splitlines() if line.strip())
+
+    def _run(self) -> None:
+        while not self._stop.wait(self.interval_s):
+            self.peak_mib = max(self.peak_mib, self._read_mib())
+
+    def __enter__(self):
+        self._thread.start()
+        return self
+
+    def __exit__(self, *_):
+        self._stop.set()
+        self._thread.join()
+        self.peak_mib = max(self.peak_mib, self._read_mib())
+
+
+def _make_image(path: Path, resolution: int = 224):
     from PIL import Image, ImageDraw
 
-    image = Image.new("RGB", (224, 224), "white")
+    image = Image.new("RGB", (resolution, resolution), "white")
     draw = ImageDraw.Draw(image)
-    draw.rectangle((24, 64, 96, 136), fill=(220, 30, 30))
-    draw.ellipse((132, 64, 204, 136), fill=(30, 80, 220))
+    margin = max(8, resolution // 10)
+    middle = resolution // 2
+    draw.rectangle(
+        (margin, margin, middle - margin // 2, resolution - margin),
+        fill=(220, 30, 30),
+    )
+    draw.ellipse(
+        (middle + margin // 2, margin, resolution - margin, resolution - margin),
+        fill=(30, 80, 220),
+    )
     image.save(path)
     return image
 
@@ -41,6 +85,8 @@ def run_rollout(
     warmup_runs: int,
     measure_runs: int,
     fixed_output_tokens: bool,
+    resolution: int,
+    decode_tokens: int,
 ) -> None:
     if warmup_runs < 0 or measure_runs < 1:
         raise ValueError("warmup_runs must be >= 0 and measure_runs must be >= 1")
@@ -58,7 +104,7 @@ def run_rollout(
 
     output_dir.mkdir(parents=True, exist_ok=True)
     image_path = output_dir / "shapes.png"
-    image = _make_image(image_path)
+    image = _make_image(image_path, resolution)
 
     layerwise = prune_after_layer >= 0
     architecture = "VerlPrunedQwen2_5VLForConditionalGeneration"
@@ -82,12 +128,12 @@ def run_rollout(
     llm_kwargs = dict(
         model=model_path,
         dtype="bfloat16",
-        max_model_len=512,
+        max_model_len=max(512, resolution * resolution // 196 + decode_tokens + 128),
         max_num_seqs=batch_size,
         # The prompt used here is about 100 tokens after visual expansion.
         # Scale the scheduler budget so batch-size stress tests are genuine
         # concurrent prefills rather than silently split by a 512-token cap.
-        max_num_batched_tokens=max(512, batch_size * 128),
+        max_num_batched_tokens=max(512, batch_size * (resolution * resolution // 196 + 128)),
         gpu_memory_utilization=gpu_memory_utilization,
         kv_cache_memory_bytes=128 * 1024 * 1024,
         enforce_eager=True,
@@ -136,8 +182,8 @@ def run_rollout(
         for _ in range(batch_size)
     ]
     sampling_params = SamplingParams(
-        max_tokens=20,
-        min_tokens=20 if fixed_output_tokens else 0,
+        max_tokens=decode_tokens,
+        min_tokens=decode_tokens if fixed_output_tokens else 0,
         temperature=0.0,
     )
     for _ in range(warmup_runs):
@@ -145,11 +191,12 @@ def run_rollout(
 
     measured_results = []
     rollout_latencies = []
-    for _ in range(measure_runs):
-        rollout_start = time.perf_counter()
-        results = llm.generate(requests, sampling_params)
-        rollout_latencies.append(time.perf_counter() - rollout_start)
-        measured_results.append(results)
+    with GPUMemorySampler() as memory:
+        for _ in range(measure_runs):
+            rollout_start = time.perf_counter()
+            results = llm.generate(requests, sampling_params)
+            rollout_latencies.append(time.perf_counter() - rollout_start)
+            measured_results.append(results)
     results = measured_results[-1]
     rollout_seconds = sum(rollout_latencies)
     measured_output_tokens = sum(
@@ -210,7 +257,12 @@ def run_rollout(
         "warmup_runs": warmup_runs,
         "measure_runs": measure_runs,
         "fixed_output_tokens": fixed_output_tokens,
+        "resolution": resolution,
+        "decode_tokens": decode_tokens,
         "output_tokens_per_second": measured_output_tokens / rollout_seconds,
+        "gpu_memory_baseline_mib": memory.baseline_mib,
+        "gpu_memory_peak_mib": memory.peak_mib,
+        "gpu_memory_delta_mib": memory.peak_mib - memory.baseline_mib,
     }
     (output_dir / "rollout.json").write_text(
         json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -393,6 +445,11 @@ def run_train_step(output_dir: Path, learning_rate: float, steps: int) -> None:
         if layerwise
         else int(student_attention_mask[:, :teacher_prompt_length].sum().item())
     )
+    torch.cuda.empty_cache()
+    torch.cuda.reset_peak_memory_stats()
+    train_stage_baseline_allocated = torch.cuda.memory_allocated()
+    train_stage_baseline_reserved = torch.cuda.memory_reserved()
+    train_stage_start = time.perf_counter()
     with torch.no_grad():
         teacher_output = model(
             input_ids=full_input_ids,
@@ -410,6 +467,7 @@ def run_train_step(output_dir: Path, learning_rate: float, steps: int) -> None:
     step_losses = []
     step_raw_jsd = []
     step_grad_norms = []
+    step_latencies = []
     metrics_before = None
     if dynamic:
         student_kwargs = {
@@ -424,6 +482,7 @@ def run_train_step(output_dir: Path, learning_rate: float, steps: int) -> None:
     else:
         student_kwargs = {"vision_token_keep_mask": keep_mask}
     for _ in range(steps):
+        step_start = time.perf_counter()
         optimizer.zero_grad(set_to_none=True)
         student_output = model(
             input_ids=student_input_ids,
@@ -443,6 +502,8 @@ def run_train_step(output_dir: Path, learning_rate: float, steps: int) -> None:
         loss.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(trainable, max_norm=1.0)
         optimizer.step()
+        torch.cuda.synchronize()
+        step_latencies.append(time.perf_counter() - step_start)
         step_losses.append(float(loss.detach()))
         step_raw_jsd.append(metrics["self_distillation/raw_jsd_token_mean"])
         step_grad_norms.append(float(grad_norm))
@@ -463,6 +524,8 @@ def run_train_step(output_dir: Path, learning_rate: float, steps: int) -> None:
             :, student_prompt_length - 1 : student_prompt_length - 1 + response_length
         ]
         loss_after, metrics_after = _distillation_loss(updated_logits, teacher_logits, response_ids)
+    torch.cuda.synchronize()
+    train_stage_seconds = time.perf_counter() - train_stage_start
 
     summary = {
         "generated_text": record["generated_text"],
@@ -480,6 +543,13 @@ def run_train_step(output_dir: Path, learning_rate: float, steps: int) -> None:
         "step_losses": step_losses,
         "step_raw_jsd": step_raw_jsd,
         "step_grad_norms": step_grad_norms,
+        "step_latencies_s": step_latencies,
+        "mean_train_step_s": sum(step_latencies) / len(step_latencies),
+        "train_stage_seconds_including_teacher_and_postcheck": train_stage_seconds,
+        "cuda_baseline_allocated_mib": train_stage_baseline_allocated / 2**20,
+        "cuda_baseline_reserved_mib": train_stage_baseline_reserved / 2**20,
+        "cuda_peak_allocated_mib": torch.cuda.max_memory_allocated() / 2**20,
+        "cuda_peak_reserved_mib": torch.cuda.max_memory_reserved() / 2**20,
         "loss_before": step_losses[0],
         "loss_after": float(loss_after.detach()),
         "raw_jsd_before": metrics_before["self_distillation/raw_jsd_token_mean"],
@@ -527,6 +597,8 @@ def main() -> None:
     parser.add_argument("--warmup-runs", type=int, default=0)
     parser.add_argument("--measure-runs", type=int, default=1)
     parser.add_argument("--fixed-output-tokens", action="store_true")
+    parser.add_argument("--resolution", type=int, default=224)
+    parser.add_argument("--decode-tokens", type=int, default=20)
     args = parser.parse_args()
     if args.stage == "rollout":
         run_rollout(
@@ -544,6 +616,8 @@ def main() -> None:
             args.warmup_runs,
             args.measure_runs,
             args.fixed_output_tokens,
+            args.resolution,
+            args.decode_tokens,
         )
     else:
         run_train_step(args.output_dir, args.learning_rate, args.steps)

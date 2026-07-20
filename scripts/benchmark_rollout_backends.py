@@ -41,6 +41,8 @@ class BenchmarkResult:
     gpu_memory_baseline_mib: int
     gpu_memory_peak_mib: int
     gpu_memory_delta_mib: int
+    cuda_peak_allocated_mib: float | None
+    cuda_peak_reserved_mib: float | None
 
 
 class GPUMemorySampler:
@@ -192,6 +194,7 @@ def run_transformers(args: argparse.Namespace, cases: list[BenchmarkCase]) -> li
 
         criteria = TimestampCriteria()
         torch.cuda.empty_cache()
+        torch.cuda.reset_peak_memory_stats()
         torch.cuda.synchronize()
         with GPUMemorySampler() as memory:
             start_time = time.perf_counter()
@@ -224,6 +227,8 @@ def run_transformers(args: argparse.Namespace, cases: list[BenchmarkCase]) -> li
                 gpu_memory_baseline_mib=memory.baseline_mib,
                 gpu_memory_peak_mib=memory.peak_mib,
                 gpu_memory_delta_mib=memory.peak_mib - memory.baseline_mib,
+                cuda_peak_allocated_mib=torch.cuda.max_memory_allocated() / 2**20,
+                cuda_peak_reserved_mib=torch.cuda.max_memory_reserved() / 2**20,
             )
         )
     return results
@@ -240,6 +245,7 @@ def run_vllm(args: argparse.Namespace, cases: list[BenchmarkCase]) -> list[Bench
         max_num_seqs=max(case.batch_size for case in cases),
         max_num_batched_tokens=args.target_input_tokens * max(case.batch_size for case in cases),
         kv_cache_memory_bytes=args.vllm_kv_cache_mib * 1024 * 1024,
+        gpu_memory_utilization=args.vllm_gpu_memory_utilization,
         limit_mm_per_prompt={"image": 1, "video": 0},
         enable_prefix_caching=False,
         disable_log_stats=False,
@@ -299,6 +305,10 @@ def run_vllm(args: argparse.Namespace, cases: list[BenchmarkCase]) -> list[Bench
                 gpu_memory_baseline_mib=memory.baseline_mib,
                 gpu_memory_peak_mib=memory.peak_mib,
                 gpu_memory_delta_mib=memory.peak_mib - memory.baseline_mib,
+                # vLLM runs the engine in another process, so torch's parent
+                # allocator counters cannot observe its allocations.
+                cuda_peak_allocated_mib=None,
+                cuda_peak_reserved_mib=None,
             )
         )
     return results
@@ -314,6 +324,7 @@ def main() -> None:
     parser.add_argument("--target-input-tokens", type=int, default=1900)
     parser.add_argument("--decode-tokens", type=int, default=32)
     parser.add_argument("--vllm-kv-cache-mib", type=int, default=512)
+    parser.add_argument("--vllm-gpu-memory-utilization", type=float, default=0.9)
     args = parser.parse_args()
 
     cases = [
@@ -328,6 +339,9 @@ def main() -> None:
         "target_input_tokens": args.target_input_tokens,
         "decode_tokens": args.decode_tokens,
         "vllm_kv_cache_mib": args.vllm_kv_cache_mib if args.backend == "vllm" else None,
+        "vllm_gpu_memory_utilization": (
+            args.vllm_gpu_memory_utilization if args.backend == "vllm" else None
+        ),
         "results": [asdict(result) for result in runner(args, cases)],
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
