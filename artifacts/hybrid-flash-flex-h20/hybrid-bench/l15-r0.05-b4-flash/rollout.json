@@ -1,0 +1,58 @@
+{
+  "model_path": "/workspace/ckpts/Qwen2.5-VL-3B-Instruct",
+  "image_path": "/workspace/results/hybrid-bench/l15-r0.05-b4-flash/shapes.png",
+  "prompt": "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>Describe the two colored shapes from left to right in one short sentence.<|im_end|>\n<|im_start|>assistant\n",
+  "generated_token_ids": [
+    785,
+    2115,
+    6083,
+    374,
+    2518,
+    11,
+    323,
+    279,
+    1290,
+    6083,
+    374,
+    6303,
+    13,
+    151645
+  ],
+  "generated_text": "The left shape is red, and the right shape is blue.",
+  "selection": {
+    "version": 3,
+    "keep_ratio": 0.05,
+    "selector": "uniform",
+    "selector_fingerprint": "c1a333a953fdb82c74dedd2e635cdb0c802cedf5d9852183d50f33b87f6bae71",
+    "original_visual_token_count": 64,
+    "kept_visual_indices": [
+      0,
+      32,
+      63
+    ]
+  },
+  "image_grid_thw": [
+    1,
+    16,
+    16
+  ],
+  "prune_after_layer": 15,
+  "selector": "uniform",
+  "selector_kwargs": {},
+  "rollout_batch_size": 4,
+  "layerwise_backend": "flex",
+  "pre_pruning_backend": "flash",
+  "selector_input": "vision_embedding",
+  "rollout_seconds": 2.0522007243707776,
+  "rollout_latencies": [
+    0.4086618395522237,
+    0.4116598041728139,
+    0.4098900016397238,
+    0.41153997648507357,
+    0.4104491025209427
+  ],
+  "median_rollout_seconds": 0.4104491025209427,
+  "warmup_runs": 2,
+  "measure_runs": 5,
+  "output_tokens_per_second": 136.4388954135324
+}

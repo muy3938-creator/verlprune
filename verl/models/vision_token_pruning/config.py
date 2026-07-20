@@ -59,6 +59,7 @@ class VisionTokenPruningConfig:
     keep_ratio: float = 0.5
     prune_after_layer: int = -1
     layerwise_backend: str = "flex"
+    pre_pruning_backend: str = "flex"
     selector_input: str = "vision_embedding"
     selector: str = "random"
     selector_kwargs: dict[str, Any] = field(default_factory=dict)
@@ -76,6 +77,13 @@ class VisionTokenPruningConfig:
             raise ValueError("vision token pruning prune_after_layer must be >= -1")
         if self.layerwise_backend not in {"flex", "compact_flash"}:
             raise ValueError("vision token pruning layerwise_backend must be 'flex' or 'compact_flash'")
+        if self.pre_pruning_backend not in {"flex", "flash"}:
+            raise ValueError("vision token pruning pre_pruning_backend must be 'flex' or 'flash'")
+        if self.pre_pruning_backend == "flash":
+            if self.prune_after_layer < 0:
+                raise ValueError("pre_pruning_backend='flash' requires prune_after_layer >= 0")
+            if self.layerwise_backend != "flex":
+                raise ValueError("pre_pruning_backend='flash' requires layerwise_backend='flex'")
         if self.selector_input not in {"vision_embedding", "decoder_key", "decode_query"}:
             raise ValueError(
                 "vision token pruning selector_input must be 'vision_embedding', "
@@ -184,6 +192,7 @@ class VisionTokenPruningConfig:
         if self.uses_layerwise_backend:
             payload["prune_after_layer"] = self.prune_after_layer
             payload["layerwise_backend"] = self.layerwise_backend
+            payload["pre_pruning_backend"] = self.pre_pruning_backend
             payload["selector_input"] = self.selector_input
         return payload
 

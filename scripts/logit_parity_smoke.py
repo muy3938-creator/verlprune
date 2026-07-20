@@ -53,6 +53,7 @@ def run_vllm(
     selector: str,
     selector_input: str,
     selector_kwargs: dict,
+    pre_pruning_backend: str,
     gpu_memory_utilization: float,
 ) -> None:
     os.environ.setdefault("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
@@ -72,6 +73,7 @@ def run_vllm(
         keep_ratio=keep_ratio,
         prune_after_layer=prune_after_layer,
         layerwise_backend="flex",
+        pre_pruning_backend=pre_pruning_backend,
         selector="vision_pulse" if dynamic else selector,
         selector_kwargs=selector_kwargs,
         selector_input="decode_query" if dynamic else selector_input,
@@ -164,6 +166,7 @@ def run_vllm(
         "selector": "vision_pulse" if dynamic else selector,
         "selector_input": "decode_query" if dynamic else selector_input,
         "selector_kwargs": selector_kwargs,
+        "pre_pruning_backend": pre_pruning_backend,
         "selection": selection_wire,
         "steps": steps,
     }
@@ -409,6 +412,7 @@ def main() -> None:
         default="vision_embedding",
     )
     parser.add_argument("--selector-kwargs", type=json.loads, default={})
+    parser.add_argument("--pre-pruning-backend", choices=("flex", "flash"), default="flex")
     args = parser.parse_args()
     if args.stage == "vllm":
         run_vllm(
@@ -422,6 +426,7 @@ def main() -> None:
             selector=args.selector,
             selector_input=args.selector_input,
             selector_kwargs=args.selector_kwargs,
+            pre_pruning_backend=args.pre_pruning_backend,
             gpu_memory_utilization=args.gpu_memory_utilization,
         )
     elif args.stage == "transformers":

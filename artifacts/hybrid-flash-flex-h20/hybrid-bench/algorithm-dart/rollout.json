@@ -1,0 +1,60 @@
+{
+  "model_path": "/workspace/ckpts/Qwen2.5-VL-3B-Instruct",
+  "image_path": "/workspace/results/hybrid-bench/algorithm-dart/shapes.png",
+  "prompt": "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>Describe the two colored shapes from left to right in one short sentence.<|im_end|>\n<|im_start|>assistant\n",
+  "generated_token_ids": [
+    785,
+    2115,
+    6083,
+    374,
+    2518,
+    323,
+    279,
+    1290,
+    6083,
+    374,
+    6303,
+    13,
+    151645
+  ],
+  "generated_text": "The left shape is red and the right shape is blue.",
+  "selection": {
+    "version": 3,
+    "keep_ratio": 0.1,
+    "selector": "dart",
+    "selector_fingerprint": "cc83d5c211637c85aab8defe2bfc91422c89db3daf09e0e72865695e180eda5a",
+    "original_visual_token_count": 64,
+    "kept_visual_indices": [
+      7,
+      20,
+      37,
+      50,
+      59,
+      63
+    ]
+  },
+  "image_grid_thw": [
+    1,
+    16,
+    16
+  ],
+  "prune_after_layer": 15,
+  "selector": "dart",
+  "selector_kwargs": {
+    "pivot_image_tokens": 4,
+    "pivot_text_tokens": 4
+  },
+  "rollout_batch_size": 1,
+  "layerwise_backend": "flex",
+  "pre_pruning_backend": "flash",
+  "selector_input": "decoder_key",
+  "rollout_seconds": 0.6969997715204954,
+  "rollout_latencies": [
+    0.34893790911883116,
+    0.34806186240166426
+  ],
+  "median_rollout_seconds": 0.3484998857602477,
+  "warmup_runs": 1,
+  "measure_runs": 2,
+  "output_tokens_per_second": 37.30273819642919
+}

@@ -29,6 +29,10 @@ from vllm.model_executor.models.qwen2_5_vl import (
 )
 from vllm.multimodal import MULTIMODAL_REGISTRY
 from vllm.multimodal.evs import compute_mrope_for_media
+from vllm.v1.attention.backends.flash_attn import (
+    FlashAttentionImpl,
+    FlashAttentionMetadata,
+)
 from vllm.v1.attention.backends.flex_attention import (
     FlexAttentionBackend,
     FlexAttentionImpl,
@@ -57,6 +61,7 @@ class LayerwiseFlexPruningPlan:
     candidate_ids: torch.Tensor
     query_keep_mask: torch.Tensor | None
     selection_engine: VisionTokenSelectionEngine
+    pre_pruning_backend: str = "flex"
     capture_values: torch.Tensor | None = None
     dynamic_request_slot_keep: torch.Tensor | None = None
     dynamic_request_by_query: torch.Tensor | None = None
@@ -65,6 +70,8 @@ class LayerwiseFlexPruningPlan:
     def __post_init__(self) -> None:
         if self.prune_after_layer < 0:
             raise ValueError("layerwise Flex pruning requires prune_after_layer >= 0")
+        if self.pre_pruning_backend not in {"flex", "flash"}:
+            raise ValueError("pre_pruning_backend must be 'flex' or 'flash'")
         if self.candidate_ids.ndim != 1 or self.candidate_ids.dtype not in (
             torch.int32,
             torch.int64,
@@ -175,6 +182,61 @@ class LayerwisePrunedFlexAttentionImpl(FlexAttentionImpl):
         self._physical_slot_keep: torch.Tensor | None = None
         self._anchor_key_sidecar: torch.Tensor | None = None
         self._anchor_visual_sidecar: torch.Tensor | None = None
+        self._flash_impl: FlashAttentionImpl | None = None
+        self._pre_boundary_flash_forwards = 0
+        self._pre_boundary_flex_fallbacks = 0
+
+    def _get_flash_impl(self) -> FlashAttentionImpl:
+        if self._flash_impl is None:
+            self._flash_impl = FlashAttentionImpl(
+                num_heads=self.num_heads,
+                head_size=self.head_size,
+                scale=self.scale,
+                num_kv_heads=self.num_kv_heads,
+                alibi_slopes=None,
+                sliding_window=self.sliding_window,
+                kv_cache_dtype=self.kv_cache_dtype,
+                logits_soft_cap=self.logits_soft_cap,
+                attn_type=self.attn_type,
+                kv_sharing_target_layer_name=None,
+                sinks=None,
+            )
+        return self._flash_impl
+
+    @staticmethod
+    def _flash_metadata_from_flex(
+        metadata: FlexAttentionMetadata,
+    ) -> FlashAttentionMetadata | None:
+        """Adapt only cases whose Flex semantics FlashAttention can preserve."""
+
+        if (
+            not metadata.causal
+            or metadata.use_cascade
+            or bool(metadata.mm_prefix_range)
+            or metadata.score_mod is not None
+            or metadata.transformed_score_mod is not None
+        ):
+            return None
+        return FlashAttentionMetadata(
+            num_actual_tokens=metadata.num_actual_tokens,
+            max_query_len=metadata.max_query_len,
+            query_start_loc=metadata.query_start_loc,
+            max_seq_len=metadata.max_seq_len,
+            seq_lens=metadata.seq_lens,
+            block_table=metadata.block_table,
+            slot_mapping=metadata.slot_mapping,
+            use_cascade=False,
+            common_prefix_len=0,
+            cu_prefix_query_lens=None,
+            prefix_kv_lens=None,
+            suffix_kv_lens=None,
+            max_dcp_context_kv_len=None,
+            dcp_context_kv_lens=None,
+            scheduler_metadata=None,
+            prefix_scheduler_metadata=None,
+            max_num_splits=0,
+            causal=True,
+        )
 
     def _anchor_sidecars(
         self,
@@ -359,6 +421,23 @@ class LayerwisePrunedFlexAttentionImpl(FlexAttentionImpl):
                 )
 
         if layer_index <= plan.prune_after_layer:
+            if plan.pre_pruning_backend == "flash":
+                flash_metadata = self._flash_metadata_from_flex(attn_metadata)
+                if flash_metadata is not None:
+                    result = self._get_flash_impl().forward(
+                        layer,
+                        query,
+                        key,
+                        value,
+                        kv_cache,
+                        flash_metadata,
+                        output,
+                        output_scale,
+                        output_block_scale,
+                    )
+                    self._pre_boundary_flash_forwards += 1
+                    return result
+                self._pre_boundary_flex_fallbacks += 1
             return super().forward(
                 layer,
                 query,
@@ -557,6 +636,7 @@ class _LayerwiseFlexPruningMixin:
                 candidate_ids=candidate_ids,
                 query_keep_mask=keep,
                 selection_engine=self._selection_engine,
+                pre_pruning_backend=self._pruning_config.pre_pruning_backend,
             )
 
         capture = self._pending_capture_values

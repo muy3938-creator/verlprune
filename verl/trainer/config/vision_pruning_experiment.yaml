@@ -56,6 +56,8 @@ actor_rollout_ref:
 
       layerwise_backend: flex
 
+      pre_pruning_backend: flex
+
       selector_input: vision_embedding
 
   actor:

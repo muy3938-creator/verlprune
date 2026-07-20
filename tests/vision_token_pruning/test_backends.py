@@ -45,6 +45,24 @@ def test_layerwise_backend_is_eager_only_and_rejects_unsupported_model():
     ]
 
 
+def test_hybrid_flash_option_is_forwarded_without_changing_global_flex_backend():
+    config = VisionTokenPruningConfig(
+        enabled=True,
+        keep_ratio=0.1,
+        prune_after_layer=15,
+        pre_pruning_backend="flash",
+    )
+
+    options = build_vllm_pruning_launch_options(
+        config,
+        model_type="qwen2_5_vl",
+        routing_replay_enabled=False,
+    )
+
+    assert options.cli_args["attention_config"] == {"backend": "FLEX_ATTENTION"}
+    assert options.hf_overrides["vision_token_pruning"]["pre_pruning_backend"] == "flash"
+
+
 def test_compact_flash_reference_backend_does_not_request_flex_attention():
     config = VisionTokenPruningConfig(
         enabled=True,

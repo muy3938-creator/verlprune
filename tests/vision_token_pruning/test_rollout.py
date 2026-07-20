@@ -75,6 +75,7 @@ def test_layerwise_rollout_selects_batch_capable_oot_backend():
         "selector_kwargs": {},
         "prune_after_layer": 15,
         "layerwise_backend": "flex",
+        "pre_pruning_backend": "flex",
         "selector_input": "vision_embedding",
     }
     assert options.cli_args["enable_chunked_prefill"] is False

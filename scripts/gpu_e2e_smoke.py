@@ -35,10 +35,12 @@ def run_rollout(
     prune_after_layer: int,
     batch_size: int,
     layerwise_backend: str,
+    pre_pruning_backend: str,
     selector_input: str,
     gpu_memory_utilization: float,
     warmup_runs: int,
     measure_runs: int,
+    fixed_output_tokens: bool,
 ) -> None:
     if warmup_runs < 0 or measure_runs < 1:
         raise ValueError("warmup_runs must be >= 0 and measure_runs must be >= 1")
@@ -73,6 +75,7 @@ def run_rollout(
         selector_kwargs=selector_kwargs,
         prune_after_layer=prune_after_layer,
         layerwise_backend=layerwise_backend,
+        pre_pruning_backend=pre_pruning_backend,
         selector_input=selector_input,
     ).to_backend_payload()
 
@@ -132,7 +135,11 @@ def run_rollout(
         {"prompt": prompt, "multi_modal_data": {"image": image}}
         for _ in range(batch_size)
     ]
-    sampling_params = SamplingParams(max_tokens=20, temperature=0.0)
+    sampling_params = SamplingParams(
+        max_tokens=20,
+        min_tokens=20 if fixed_output_tokens else 0,
+        temperature=0.0,
+    )
     for _ in range(warmup_runs):
         llm.generate(requests, sampling_params)
 
@@ -195,12 +202,14 @@ def run_rollout(
         "selector_kwargs": selector_kwargs,
         "rollout_batch_size": batch_size,
         "layerwise_backend": layerwise_backend,
+        "pre_pruning_backend": pre_pruning_backend,
         "selector_input": selector_input,
         "rollout_seconds": rollout_seconds,
         "rollout_latencies": rollout_latencies,
         "median_rollout_seconds": statistics.median(rollout_latencies),
         "warmup_runs": warmup_runs,
         "measure_runs": measure_runs,
+        "fixed_output_tokens": fixed_output_tokens,
         "output_tokens_per_second": measured_output_tokens / rollout_seconds,
     }
     (output_dir / "rollout.json").write_text(
@@ -221,6 +230,7 @@ def run_rollout(
     print(f"selector={selector}")
     print(f"selector_kwargs={selector_kwargs}")
     print(f"layerwise_backend={layerwise_backend}")
+    print(f"pre_pruning_backend={pre_pruning_backend}")
     print(f"selector_input={selector_input}")
     print(f"rollout_seconds={rollout_seconds:.6f}")
     print(f"rollout_latencies={rollout_latencies}")
@@ -504,6 +514,7 @@ def main() -> None:
     parser.add_argument("--selector-kwargs", type=json.loads, default={})
     parser.add_argument("--prune-after-layer", type=int, default=-1)
     parser.add_argument("--layerwise-backend", choices=("flex", "compact_flash"), default="flex")
+    parser.add_argument("--pre-pruning-backend", choices=("flex", "flash"), default="flex")
     parser.add_argument(
         "--selector-input",
         choices=("vision_embedding", "decoder_key", "decode_query"),
@@ -515,6 +526,7 @@ def main() -> None:
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.5)
     parser.add_argument("--warmup-runs", type=int, default=0)
     parser.add_argument("--measure-runs", type=int, default=1)
+    parser.add_argument("--fixed-output-tokens", action="store_true")
     args = parser.parse_args()
     if args.stage == "rollout":
         run_rollout(
@@ -526,10 +538,12 @@ def main() -> None:
             args.prune_after_layer,
             args.batch_size,
             args.layerwise_backend,
+            args.pre_pruning_backend,
             args.selector_input,
             args.gpu_memory_utilization,
             args.warmup_runs,
             args.measure_runs,
+            args.fixed_output_tokens,
         )
     else:
         run_train_step(args.output_dir, args.learning_rate, args.steps)

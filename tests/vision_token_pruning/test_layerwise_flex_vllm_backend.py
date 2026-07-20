@@ -12,7 +12,9 @@ if not torch.cuda.is_available():
     pytest.skip("vLLM FlexAttention requires CUDA", allow_module_level=True)
 
 import vllm.forward_context  # noqa: E402
+from vllm.v1.attention.backends.flash_attn import FlashAttentionImpl  # noqa: E402
 from vllm.v1.attention.backends.flex_attention import (  # noqa: E402
+    FlexAttentionImpl,
     FlexAttentionMetadata,
     physical_to_logical_mapping,
 )
@@ -78,6 +80,116 @@ def _implementation() -> LayerwisePrunedFlexAttentionImpl:
         sliding_window=None,
         kv_cache_dtype="auto",
     )
+
+
+def _layer(layer_index: int):
+    return SimpleNamespace(
+        layer_name=f"model.language_model.layers.{layer_index}.self_attn.attn",
+        _q_scale=torch.tensor(1.0, device="cuda"),
+        _k_scale=torch.tensor(1.0, device="cuda"),
+        _v_scale=torch.tensor(1.0, device="cuda"),
+    )
+
+
+def test_flash_is_used_through_boundary_and_post_boundary_stays_flex():
+    config = VisionTokenPruningConfig(
+        enabled=True,
+        keep_ratio=0.5,
+        prune_after_layer=1,
+        pre_pruning_backend="flash",
+    )
+    plan = LayerwiseFlexPruningPlan(
+        prune_after_layer=1,
+        selector_input="vision_embedding",
+        candidate_ids=torch.zeros(4, dtype=torch.int64, device="cuda"),
+        query_keep_mask=torch.ones(4, dtype=torch.bool, device="cuda"),
+        selection_engine=VisionTokenSelectionEngine(config, seed=7),
+        pre_pruning_backend="flash",
+    )
+    metadata = _metadata(query_tokens=4, sequence_length=4, slot_start=16)
+    query = torch.randn(4, 2, 16, dtype=torch.bfloat16, device="cuda")
+    key = torch.randn_like(query)
+    value = torch.randn_like(query)
+    cache = torch.zeros(2, 2, 16, 2, 16, dtype=torch.bfloat16, device="cuda")
+    impl = _implementation()
+
+    def fake_flash_forward(_impl, _layer, _query, _key, _value, _cache, _metadata, output, *_):
+        return output.fill_(3)
+
+    def fake_flex_forward(_impl, _layer, _query, _key, _value, _cache, _metadata, output, *_):
+        return output.fill_(5)
+
+    boundary_layer = _layer(1)
+    boundary_output = torch.empty_like(query)
+    with (
+        patch(
+            "vllm.forward_context.get_forward_context",
+            return_value=_context(boundary_layer.layer_name, metadata, plan),
+        ),
+        patch.object(FlashAttentionImpl, "forward", autospec=True, side_effect=fake_flash_forward),
+    ):
+        impl.forward(boundary_layer, query, key, value, cache, metadata, boundary_output)
+
+    assert torch.all(boundary_output == 3)
+    assert impl._pre_boundary_flash_forwards == 1
+    assert impl._pre_boundary_flex_fallbacks == 0
+
+    post_layer = _layer(2)
+    post_output = torch.empty_like(query)
+    with (
+        patch(
+            "vllm.forward_context.get_forward_context",
+            return_value=_context(post_layer.layer_name, metadata, plan),
+        ),
+        patch.object(FlexAttentionImpl, "forward", autospec=True, side_effect=fake_flex_forward),
+    ):
+        impl.forward(post_layer, query, key, value, cache, metadata, post_output)
+
+    assert torch.all(post_output == 5)
+    assert impl._pre_boundary_flash_forwards == 1
+
+
+def test_flash_pre_boundary_falls_back_for_multimodal_prefix_mask():
+    config = VisionTokenPruningConfig(
+        enabled=True,
+        keep_ratio=0.5,
+        prune_after_layer=1,
+        pre_pruning_backend="flash",
+    )
+    plan = LayerwiseFlexPruningPlan(
+        prune_after_layer=1,
+        selector_input="vision_embedding",
+        candidate_ids=torch.zeros(4, dtype=torch.int64, device="cuda"),
+        query_keep_mask=torch.ones(4, dtype=torch.bool, device="cuda"),
+        selection_engine=VisionTokenSelectionEngine(config, seed=7),
+        pre_pruning_backend="flash",
+    )
+    metadata = _metadata(query_tokens=4, sequence_length=4, slot_start=16)
+    metadata.mm_prefix_range = {0: [(0, 2)]}
+    query = torch.randn(4, 2, 16, dtype=torch.bfloat16, device="cuda")
+    key = torch.randn_like(query)
+    value = torch.randn_like(query)
+    cache = torch.zeros(2, 2, 16, 2, 16, dtype=torch.bfloat16, device="cuda")
+    output = torch.empty_like(query)
+    impl = _implementation()
+    layer = _layer(0)
+
+    def fake_flex_forward(_impl, _layer, _query, _key, _value, _cache, _metadata, result, *_):
+        return result.fill_(7)
+
+    with (
+        patch(
+            "vllm.forward_context.get_forward_context",
+            return_value=_context(layer.layer_name, metadata, plan),
+        ),
+        patch.object(FlexAttentionImpl, "forward", autospec=True, side_effect=fake_flex_forward),
+    ):
+        impl.forward(layer, query, key, value, cache, metadata, output)
+
+    assert torch.all(output == 7)
+    assert impl._pre_boundary_flash_forwards == 0
+    assert impl._pre_boundary_flex_fallbacks == 1
+    assert impl._flash_impl is None
 
 
 def test_boundary_key_selection_persists_into_decode_physical_slots():

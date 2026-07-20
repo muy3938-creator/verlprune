@@ -101,6 +101,46 @@ def test_compact_flash_remains_an_explicit_reference_backend():
     assert config.backend_name == "layerwise_compact_flash"
 
 
+def test_flash_can_accelerate_layers_through_the_flex_pruning_boundary():
+    config = VisionTokenPruningConfig(
+        enabled=True,
+        keep_ratio=0.1,
+        prune_after_layer=15,
+        layerwise_backend="flex",
+        pre_pruning_backend="flash",
+    )
+
+    assert config.to_backend_payload()["pre_pruning_backend"] == "flash"
+
+
+@pytest.mark.parametrize("pre_pruning_backend", ["sdpa", "flash_attention_2"])
+def test_pre_pruning_backend_rejects_unknown_values(pre_pruning_backend):
+    with pytest.raises(ValueError, match="pre_pruning_backend"):
+        VisionTokenPruningConfig(
+            enabled=True,
+            keep_ratio=0.1,
+            prune_after_layer=15,
+            pre_pruning_backend=pre_pruning_backend,
+        )
+
+
+def test_flash_pre_pruning_backend_requires_layerwise_flex():
+    with pytest.raises(ValueError, match="prune_after_layer"):
+        VisionTokenPruningConfig(
+            enabled=True,
+            keep_ratio=0.1,
+            pre_pruning_backend="flash",
+        )
+    with pytest.raises(ValueError, match="layerwise_backend='flex'"):
+        VisionTokenPruningConfig(
+            enabled=True,
+            keep_ratio=0.1,
+            prune_after_layer=15,
+            layerwise_backend="compact_flash",
+            pre_pruning_backend="flash",
+        )
+
+
 def test_decoder_key_selection_is_layerwise_only():
     with pytest.raises(ValueError, match="decoder_key"):
         VisionTokenPruningConfig(
