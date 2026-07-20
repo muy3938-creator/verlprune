@@ -10,11 +10,8 @@ The comparison is intentionally explicit about the kernels in use:
 
 * ``vllm_flex`` uses native vLLM FlashAttention through the pruning boundary
   and the repository's masked FlexAttention adapter afterwards.
-* ``transformers_flash`` is the current cache-aware reference adapter: it uses
-  Hugging Face FlashAttention 2 through the pruning boundary and PyTorch SDPA
-  with a boolean KV mask afterwards.  This is an adapter limitation, not a
-  FlashAttention limitation; the actor/training path demonstrates that packed
-  variable-length Q/K/V can keep FlashAttention active after pruning.
+* ``transformers_flash`` uses Hugging Face FlashAttention 2 through the pruning
+  boundary, then gathers retained Q/K/V and calls varlen FlashAttention 2.
 
 Neither late-layer path physically compacts the KV cache.  This script is a
 latency benchmark for the current research implementations, not a claim that
@@ -187,7 +184,12 @@ def _timing_sample(
 
 def run_transformers(args: argparse.Namespace) -> dict[str, Any]:
     import torch
-    from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration, StoppingCriteria
+    from transformers import (
+        AutoProcessor,
+        LogitsProcessor,
+        Qwen2_5_VLForConditionalGeneration,
+        StoppingCriteria,
+    )
 
     from verl.models.vision_token_pruning.config import VisionTokenPruningConfig
     from verl.models.vision_token_pruning.transformers_sampler import install_transformers_pruning
@@ -229,13 +231,45 @@ def run_transformers(args: argparse.Namespace) -> dict[str, Any]:
         input_ids=inputs["input_ids"],
         image_token_id=image_token_id,
         config=config,
+        post_pruning_backend=args.transformers_post_pruning_backend,
     )
     cuda_inputs = {key: value.cuda() for key, value in inputs.items()}
+    forced_token_ids = args.forced_token_ids
+    if forced_token_ids is not None and len(forced_token_ids) != args.decode_tokens:
+        raise ValueError("forced token count must equal --decode-tokens")
 
-    def generate_once() -> tuple[Any, float, float]:
+    class ForceAndCapture(LogitsProcessor):
+        def __init__(self, token_ids: list[int]) -> None:
+            self.token_ids = token_ids
+            self.steps: list[dict[str, Any]] = []
+
+        def __call__(self, generated_ids, scores):
+            step = int(generated_ids.shape[-1] - inputs["input_ids"].shape[1])
+            raw_logprobs = scores[0].float().log_softmax(dim=-1)
+            top_values, top_indices = raw_logprobs.topk(20)
+            token_id = int(self.token_ids[min(step, len(self.token_ids) - 1)])
+            self.steps.append(
+                {
+                    "token_id": token_id,
+                    "sampled_logprob": float(raw_logprobs[token_id]),
+                    "argmax_token_id": int(raw_logprobs.argmax()),
+                    "top_logprobs": {
+                        str(int(index)): float(value)
+                        for index, value in zip(top_indices, top_values, strict=True)
+                    },
+                }
+            )
+            forced_scores = torch.full_like(scores, -float("inf"))
+            forced_scores[:, token_id] = scores[:, token_id]
+            return forced_scores
+
+    def generate_once() -> tuple[Any, float, float, ForceAndCapture | None]:
         # Recompute the nominal anchor selection for each independent request.
         state.static_indices = None
         timestamp = FirstTokenTimestamp()
+        forced_processor = (
+            ForceAndCapture(forced_token_ids) if forced_token_ids is not None else None
+        )
         torch.cuda.synchronize()
         started = time.perf_counter()
         with torch.inference_mode():
@@ -246,11 +280,14 @@ def run_transformers(args: argparse.Namespace) -> dict[str, Any]:
                 do_sample=False,
                 use_cache=True,
                 stopping_criteria=[timestamp],
+                logits_processor=([forced_processor] if forced_processor is not None else None),
+                return_dict_in_generate=args.record_logits,
+                output_logits=args.record_logits,
             )
         torch.cuda.synchronize()
         elapsed = time.perf_counter() - started
         first = timestamp.first_token_time
-        return output, elapsed, elapsed if first is None else first - started
+        return output, elapsed, elapsed if first is None else first - started, forced_processor
 
     for _ in range(args.warmup_runs):
         generate_once()
@@ -260,8 +297,9 @@ def run_transformers(args: argparse.Namespace) -> dict[str, Any]:
     output_ids = None
     with GPUMemorySampler() as memory:
         for _ in range(args.measure_runs):
-            output_ids, elapsed, ttft = generate_once()
-            generated = int(output_ids.shape[1] - inputs["input_ids"].shape[1])
+            output_ids, elapsed, ttft, forced_processor = generate_once()
+            sequences = output_ids.sequences if args.record_logits else output_ids
+            generated = int(sequences.shape[1] - inputs["input_ids"].shape[1])
             samples.append(
                 _timing_sample(
                     wall_time_s=elapsed,
@@ -271,21 +309,27 @@ def run_transformers(args: argparse.Namespace) -> dict[str, Any]:
                 )
             )
     assert output_ids is not None
-    generated = int(output_ids.shape[1] - inputs["input_ids"].shape[1])
+    sequences = output_ids.sequences if args.record_logits else output_ids
+    generated = int(sequences.shape[1] - inputs["input_ids"].shape[1])
     selections = state.selections()
     kept_counts = [len(selection.kept_visual_indices) for selection in selections]
-    return {
+    result = {
         "backend": "transformers_flash",
         "early_attention_backend": "flash_attention_2",
-        "late_attention_backend": "pytorch_sdpa_boolean_mask",
+        "late_attention_backend": (
+            "flash_attention_2_varlen_packed_qkv"
+            if args.transformers_post_pruning_backend == "flash_varlen"
+            else "pytorch_sdpa_boolean_mask"
+        ),
         "physical_kv_compaction": False,
+        "attention_qkv_packing": True,
         "prompt": prompt,
         "image_resolution": args.resolution,
         "prompt_tokens_per_request": prompt_tokens,
         "visual_tokens_per_request": visual_tokens,
         "kept_visual_tokens_per_request": kept_counts,
         "generated_tokens_per_request": generated,
-        "generated_token_ids_first_request": output_ids[0, -generated:].cpu().tolist(),
+        "generated_token_ids_first_request": sequences[0, -generated:].cpu().tolist(),
         "samples": samples,
         "summary": _summary(samples),
         "gpu_memory_baseline_mib": memory.baseline_mib,
@@ -295,6 +339,27 @@ def run_transformers(args: argparse.Namespace) -> dict[str, Any]:
         "cuda_peak_allocated_mib": torch.cuda.max_memory_allocated() / 2**20,
         "cuda_peak_reserved_mib": torch.cuda.max_memory_reserved() / 2**20,
     }
+    if args.record_logits and forced_token_ids is None:
+        logit_steps = []
+        generated_ids = sequences[0, -generated:]
+        for token_id, step_logits in zip(generated_ids, output_ids.logits, strict=True):
+            logprobs = step_logits[0].float().log_softmax(dim=-1)
+            top_values, top_indices = logprobs.topk(20)
+            logit_steps.append(
+                {
+                    "token_id": int(token_id),
+                    "sampled_logprob": float(logprobs[token_id]),
+                    "argmax_token_id": int(logprobs.argmax()),
+                    "top_logprobs": {
+                        str(int(index)): float(value)
+                        for index, value in zip(top_indices, top_values, strict=True)
+                    },
+                }
+            )
+        result["logit_steps"] = logit_steps
+    elif args.record_logits and forced_token_ids is not None:
+        result["logit_steps"] = forced_processor.steps
+    return result
 
 
 def run_vllm(args: argparse.Namespace) -> dict[str, Any]:
@@ -322,12 +387,17 @@ def run_vllm(args: argparse.Namespace) -> dict[str, Any]:
         pre_pruning_backend="flash",
         selector_input="decoder_key",
     )
+    max_model_len = visual_tokens + args.decode_tokens + 256
     llm = LLM(
         model=args.model,
         dtype="bfloat16",
-        max_model_len=visual_tokens + args.decode_tokens + 256,
+        max_model_len=max_model_len,
         max_num_seqs=args.batch_size,
-        max_num_batched_tokens=max(2048, args.batch_size * (prompt_tokens + 64)),
+        max_num_batched_tokens=max(
+            2048,
+            max_model_len,
+            args.batch_size * (prompt_tokens + 64),
+        ),
         kv_cache_memory_bytes=args.vllm_kv_cache_mib * 1024 * 1024,
         gpu_memory_utilization=args.gpu_memory_utilization,
         enforce_eager=True,
@@ -394,6 +464,7 @@ def run_vllm(args: argparse.Namespace) -> dict[str, Any]:
         "early_attention_backend": "vllm_flash_attention",
         "late_attention_backend": "vllm_flex_attention_score_mod",
         "physical_kv_compaction": False,
+        "attention_qkv_packing": False,
         "prompt": prompt,
         "image_resolution": args.resolution,
         "prompt_tokens_per_request": prompt_tokens,
@@ -427,6 +498,13 @@ def main() -> None:
     parser.add_argument("--measure-runs", type=int, default=3)
     parser.add_argument("--vllm-kv-cache-mib", type=int, default=512)
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.5)
+    parser.add_argument(
+        "--transformers-post-pruning-backend",
+        choices=("flash_varlen", "sdpa"),
+        default="flash_varlen",
+    )
+    parser.add_argument("--forced-token-ids", type=json.loads)
+    parser.add_argument("--record-logits", action="store_true")
     args = parser.parse_args()
     if not 0.0 < args.keep_ratio <= 1.0:
         parser.error("--keep-ratio must be in (0, 1]")

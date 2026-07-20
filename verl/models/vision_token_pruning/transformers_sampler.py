@@ -2,9 +2,9 @@
 
 This adapter intentionally uses the public Hugging Face model and cache.  It
 does not patch vLLM or global Transformers classes.  Layers through the anchor
-run with the model's configured FlashAttention backend; later layers use SDPA
-with either one static visual-token selection or a per-decode-query
-VisionPulse selection.
+run with the model's configured FlashAttention backend; later layers gather
+the retained Q/K/V rows and use packed varlen FlashAttention by default.  The
+older SDPA mask remains an explicit numerical/debug reference.
 """
 
 from __future__ import annotations
@@ -30,12 +30,15 @@ class TransformersPruningState:
     static_indices: list[torch.Tensor] | None = None
     current_dynamic_indices: list[torch.Tensor] | None = None
     dynamic_rows: list[list[tuple[int, ...]]] = field(default_factory=list)
+    post_pruning_backend: str = "sdpa"
 
     def __post_init__(self) -> None:
         if self.visual_mask.ndim != 2 or self.visual_mask.dtype != torch.bool:
             raise ValueError("visual_mask must have shape [batch, prompt_length] and bool dtype")
         if len(self.engines) != len(self.visual_mask):
             raise ValueError("one selection engine is required per batch element")
+        if self.post_pruning_backend not in {"sdpa", "flash_varlen"}:
+            raise ValueError("post_pruning_backend must be 'sdpa' or 'flash_varlen'")
         if not self.dynamic_rows:
             self.dynamic_rows = [
                 [tuple() for _ in range(self.prompt_length)]
@@ -196,7 +199,95 @@ def _pruned_sdpa(
     return output.transpose(1, 2).contiguous()
 
 
-def _make_attention_forward(state: TransformersPruningState, flash_attention):
+def _packed_token_indices(keep: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, int]:
+    """Return flat packed indices, int32 cu-seqlens, and maximum row length."""
+
+    if keep.ndim != 2 or keep.dtype != torch.bool:
+        raise ValueError("packed FlashAttention keep mask must be rank-2 bool")
+    lengths = keep.sum(dim=1, dtype=torch.int32)
+    if not bool((lengths > 0).all()):
+        raise ValueError("every packed FlashAttention request must retain at least one token")
+    indices = keep.reshape(-1).nonzero(as_tuple=False).flatten()
+    cu_seqlens = F.pad(torch.cumsum(lengths, dim=0, dtype=torch.int32), (1, 0))
+    return indices, cu_seqlens, int(lengths.max().item())
+
+
+def _pruned_flash_varlen(
+    query_states: torch.Tensor,
+    key_states: torch.Tensor,
+    value_states: torch.Tensor,
+    key_keep: torch.Tensor,
+    *,
+    attention_mask: torch.Tensor | None,
+    scaling: float,
+    dropout: float,
+    flash_attn_varlen_func,
+) -> torch.Tensor:
+    """Run arbitrary retained KV rows through packed varlen FlashAttention.
+
+    The full Transformers DynamicCache remains intact.  Only the current
+    attention inputs are gathered, so static and per-query dynamic selections
+    can share the same implementation without changing cache bookkeeping.
+    """
+
+    batch_size, query_heads, query_length, head_dim = query_states.shape
+    if key_states.ndim != 4 or value_states.shape != key_states.shape:
+        raise ValueError("key/value states must have matching rank-4 shapes")
+    if key_keep.shape != (batch_size, key_states.shape[2]):
+        raise ValueError("key_keep must match the batch and KV sequence dimensions")
+    key_keep = key_keep.to(device=key_states.device, dtype=torch.bool)
+    if attention_mask is not None:
+        if attention_mask.ndim != 2 or attention_mask.shape != key_keep.shape:
+            raise ValueError("varlen FlashAttention expects a rank-2 padding mask matching KV")
+        key_keep = key_keep & attention_mask.to(device=key_keep.device, dtype=torch.bool)
+
+    # Generation queries are the final query_length positions in their KV
+    # context.  Static prefill therefore drops the corresponding visual query
+    # rows, while decode query_length=1 always retains the newly generated row.
+    query_keep = key_keep[:, -query_length:]
+    query_indices, cu_seqlens_q, max_seqlen_q = _packed_token_indices(query_keep)
+    key_indices, cu_seqlens_k, max_seqlen_k = _packed_token_indices(key_keep)
+
+    query_token_major = query_states.transpose(1, 2).contiguous()
+    key_token_major = key_states.transpose(1, 2).contiguous()
+    value_token_major = value_states.transpose(1, 2).contiguous()
+    packed_query = query_token_major.view(-1, query_heads, head_dim).index_select(
+        0, query_indices
+    )
+    packed_key = key_token_major.view(
+        -1,
+        key_states.shape[1],
+        head_dim,
+    ).index_select(0, key_indices)
+    packed_value = value_token_major.view(
+        -1,
+        value_states.shape[1],
+        head_dim,
+    ).index_select(0, key_indices)
+    packed_output = flash_attn_varlen_func(
+        q=packed_query,
+        k=packed_key,
+        v=packed_value,
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_k=cu_seqlens_k,
+        max_seqlen_q=max_seqlen_q,
+        max_seqlen_k=max_seqlen_k,
+        dropout_p=dropout,
+        softmax_scale=scaling,
+        causal=True,
+    )
+    output = packed_output.new_zeros(
+        (batch_size * query_length, query_heads, head_dim)
+    )
+    output.index_copy_(0, query_indices, packed_output)
+    return output.view(batch_size, query_length, query_heads, head_dim)
+
+
+def _make_attention_forward(
+    state: TransformersPruningState,
+    flash_attention,
+    flash_attn_varlen_func=None,
+):
     from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
         apply_multimodal_rotary_pos_emb,
     )
@@ -264,15 +355,29 @@ def _make_attention_forward(state: TransformersPruningState, flash_attention):
                 if dynamic
                 else state.static_key_keep(key_states.shape[2], key_states.device)
             )
-            attn_output = _pruned_sdpa(
-                query_states,
-                key_states,
-                value_states,
-                key_keep,
-                scaling=module.scaling,
-                dropout=dropout,
-                dynamic_last_query_only=dynamic,
-            )
+            if state.post_pruning_backend == "flash_varlen":
+                if flash_attn_varlen_func is None:
+                    raise RuntimeError("flash_varlen backend was installed without FlashAttention")
+                attn_output = _pruned_flash_varlen(
+                    query_states,
+                    key_states,
+                    value_states,
+                    key_keep,
+                    attention_mask=attention_mask,
+                    scaling=module.scaling,
+                    dropout=dropout,
+                    flash_attn_varlen_func=flash_attn_varlen_func,
+                )
+            else:
+                attn_output = _pruned_sdpa(
+                    query_states,
+                    key_states,
+                    value_states,
+                    key_keep,
+                    scaling=module.scaling,
+                    dropout=dropout,
+                    dynamic_last_query_only=dynamic,
+                )
             attn_weights = None
         else:
             attn_output, attn_weights = flash_attention(
@@ -300,6 +405,7 @@ def install_transformers_pruning(
     image_token_id: int,
     config: VisionTokenPruningConfig,
     seed: int = 0,
+    post_pruning_backend: str = "flash_varlen",
 ) -> TransformersPruningState:
     """Install pruning on one Qwen2.5-VL model instance and return its state."""
 
@@ -316,11 +422,21 @@ def install_transformers_pruning(
         config=config,
         visual_mask=visual_mask,
         engines=[VisionTokenSelectionEngine(config, seed=seed + index) for index in range(len(input_ids))],
+        post_pruning_backend=post_pruning_backend,
     )
     from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
 
     flash_attention = ALL_ATTENTION_FUNCTIONS["flash_attention_2"]
-    forward = _make_attention_forward(state, flash_attention)
+    flash_varlen = None
+    if post_pruning_backend == "flash_varlen":
+        try:
+            from flash_attn import flash_attn_varlen_func
+        except ImportError as exc:
+            raise ImportError(
+                "post_pruning_backend='flash_varlen' requires flash-attn"
+            ) from exc
+        flash_varlen = flash_attn_varlen_func
+    forward = _make_attention_forward(state, flash_attention, flash_varlen)
     layers = model.model.language_model.layers
     if config.prune_after_layer >= len(layers) - 1:
         raise ValueError("prune_after_layer must leave at least one pruned layer")

@@ -1,13 +1,12 @@
-# vLLM Flex versus Transformers Flash/SDPA at 1,024 visual tokens
+# vLLM Hybrid versus Transformers all-Flash varlen pruning
 
 ## Scope and status
 
 This report compares the current arbitrary-layer research implementations on
-Qwen2.5-VL-3B-Instruct.  The planned controlled H20 matrix was stopped at the
-user's request after repeated workspace allocations all landed on shared GPUs
-held at 99--100% utilization.  Pilot runs validated the benchmark path and
-exact token counts, but their latency is excluded from formal performance
-claims.
+Qwen2.5-VL-3B-Instruct.  A clean H20 run completed 24 batch-1 matrix records
+(12 at 1,024 visual tokens and 12 at 2,025 visual tokens), plus four batch-4
+confirmation records.  Earlier SDPA pilot runs are retained only as historical
+context and are excluded from the conclusions.
 
 ## What is actually being compared
 
@@ -16,22 +15,18 @@ The short backend labels need one important qualification:
 | Label | Layers through boundary `L` | Layers after `L` | KV behavior |
 |---|---|---|---|
 | `vllm_flex` | vLLM FlashAttention | vLLM FlexAttention `score_mod` | full paged KV retained; logical mask |
-| `transformers_flash` | Hugging Face FlashAttention 2 | PyTorch SDPA + boolean mask | full DynamicCache retained; logical mask |
+| `transformers_flash` | Hugging Face FlashAttention 2 | packed varlen FlashAttention 2 | full DynamicCache retained; selected Q/K/V gathered per call |
 
-The benchmarked Transformers reference is therefore not “all FlashAttention”
-after pruning.  This is a limitation of the current cache-aware generation
-adapter, which explicitly changes to SDPA after the boundary; it is **not** a
-fundamental FlashAttention limitation.  The actor/training implementation
-already gathers retained Q/K/V into packed variable-length sequences, builds
-`cu_seqlens`, calls `flash_attn_varlen_func`, and scatters the compact output
-back.  The same construction can be adapted to generation by packing the
-selected cached KV independently for each request and using query/KV
-`cu_seqlens` during prefill and decode.
+After the boundary, the generation adapter gathers retained Q/K/V, builds
+separate query/KV `cu_seqlens`, calls `flash_attn_varlen_func`, and scatters
+the query output back.  The cache allocation remains full, but the attention
+kernel receives only retained rows.  This is the same mathematical pattern as
+the training-side compact FlashAttention path.
 
-Current Flex `score_mod` still masks logical keys without physically compacting
-vLLM's paged cache or guaranteeing structured sparse block skipping.  The
-current benchmark therefore compares the two adapters as they existed, not the
-intended all-Flash Transformers implementation.
+Current vLLM Flex `score_mod` still masks logical keys without physically
+compacting paged KV or guaranteeing structured sparse block skipping.  Thus the
+comparison is now Hybrid vLLM Flash→Flex versus Transformers Flash→packed
+varlen Flash.
 
 ## Controlled protocol
 
@@ -39,12 +34,13 @@ intended all-Flash Transformers implementation.
   consecutive samples at no more than 5% GPU utilization.
 - Model/dtype: Qwen2.5-VL-3B-Instruct, BF16.
 - Input: one synthetic 896x896 image and a fixed short instruction.
-- Measured processor output: 1,059 prompt tokens per request, including
-  exactly 1,024 merged visual tokens.
+- Measured processor output: 1,059 prompt tokens for the 1,024-visual-token
+  case; the 2,025-visual-token case used a 1,260px image and a 2,060-token
+  prompt.
 - Selection: deterministic uniform selection.  This removes selector compute
   and selection-quality variance from the backend comparison.
-- Keep ratios: 100%, 50%, 25%, 10%, and 5%.
-- Boundaries: after decoder layers 0, 7, 15, and 27.  Layers `0..L` use the
+- Matrix keep ratios: 50%, 10%, and 5%.
+- Matrix boundaries: after decoder layers 0 and 15.  Layers `0..L` use the
   early backend; masking starts at layer `L+1`.
 - Decode: greedy, exactly 32 new tokens, KV cache enabled.
 - Timing: one warmup and three measured runs per process-isolated case; report
@@ -57,15 +53,58 @@ The 100% point uses `keep_ratio=1-1e-9`, which rounds to all 1,024 visual
 tokens.  This deliberately keeps the same plugin, anchor selection, and
 backend-switch path instead of giving the control an implementation shortcut.
 
-## Batch-1 controlled matrix
+## Clean batch-1 matrix
 
-Not completed.  No contaminated pilot timing is promoted into this table.
+Each cell is `vLLM / Transformers` median seconds, with the parenthesized
+number being `Transformers ÷ vLLM`.
 
-## Batch-4 confirmation matrix
+### 1,024 visual tokens
 
-Not completed.
+| Boundary | Keep | Prefill TTFT | Decode | End to end |
+|---:|---:|---:|---:|---:|
+| 0 | 50% | 0.1145 / 0.1538 (1.34×) | 0.7803 / 1.2341 (1.58×) | 0.8948 / 1.3877 (1.55×) |
+| 0 | 10% | 0.1142 / 0.1546 (1.35×) | 0.7824 / 1.2344 (1.58×) | 0.8974 / 1.3897 (1.55×) |
+| 0 | 5% | 0.1142 / 0.1541 (1.35×) | 0.7936 / 1.2249 (1.54×) | 0.9078 / 1.3790 (1.52×) |
+| 15 | 50% | 0.0978 / 0.1488 (1.52×) | 0.6860 / 1.0712 (1.56×) | 0.7839 / 1.2200 (1.56×) |
+| 15 | 10% | 0.0977 / 0.1490 (1.53×) | 0.6861 / 1.0603 (1.55×) | 0.7842 / 1.2089 (1.54×) |
+| 15 | 5% | 0.0982 / 0.1491 (1.52×) | 0.6895 / 1.0654 (1.55×) | 0.7877 / 1.2153 (1.54×) |
+
+### 2,025 visual tokens
+
+| Boundary | Keep | Prefill TTFT | Decode | End to end |
+|---:|---:|---:|---:|---:|
+| 0 | 50% | 0.2196 / 0.2783 (1.27×) | 0.8223 / 1.2639 (1.54×) | 1.0419 / 1.5422 (1.48×) |
+| 0 | 10% | 0.2179 / 0.2761 (1.27×) | 0.8144 / 1.2394 (1.52×) | 1.0324 / 1.5152 (1.47×) |
+| 0 | 5% | 0.2193 / 0.2761 (1.26×) | 0.8504 / 1.2209 (1.44×) | 1.0693 / 1.4989 (1.40×) |
+| 15 | 50% | 0.1767 / 0.2752 (1.56×) | 0.6983 / 1.0585 (1.52×) | 0.8789 / 1.3358 (1.52×) |
+| 15 | 10% | 0.1764 / 0.2738 (1.55×) | 0.6857 / 1.0546 (1.54×) | 0.8629 / 1.3286 (1.54×) |
+| 15 | 5% | 0.1773 / 0.2740 (1.55×) | 0.6910 / 1.0598 (1.53×) | 0.8695 / 1.3338 (1.53×) |
+
+### Batch-4 confirmation at layer 15, 10%
+
+| Visual tokens | vLLM TTFT / Decode / Total | Transformers TTFT / Decode / Total | Total ratio |
+|---:|---:|---:|---:|
+| 1,024 | 0.295 / 0.707 / 1.003s | 0.504 / 1.126 / 1.631s | 1.63× |
+| 2,025 | 0.649 / 0.878 / 1.527s | 0.996 / 1.132 / 2.127s | 1.39× |
+
+The matrix JSON records report zero host utilization before startup.  The
+small nonzero utilization visible after warmup is the benchmark process itself,
+not an external workload.
 
 ## Existing controlled evidence
+
+### Numerical validation of all-Flash generation
+
+- Real H20 varlen FlashAttention matched compacted SDPA for both multi-request
+  prefill and one-query decode, including GQA heads: `2 passed`.
+- The complete sampler tests passed locally and on CUDA.
+- On real Qwen2.5-VL-3B with a shared eight-token forced history, varlen Flash
+  versus SDPA sampled-log-probability absolute difference was `0.02269` mean
+  and `0.07551` maximum; 7/8 raw argmax tokens matched.
+- One free-running token diverged at the near-tied second step, as expected
+  when BF16 reduction order crosses an argmax boundary.  The cache shapes,
+  retained counts, and subsequent forced-history logits remained finite and
+  aligned within the declared kernel tolerance.
 
 ### Unpruned 1,024-visual-token backend baseline
 
@@ -136,21 +175,23 @@ These numbers suggest vLLM remained faster even under contention, but the two
 processes did not receive identical competing load.  They must not be quoted
 as a clean speedup measurement.
 
-## Current best conclusion
+## Current conclusion
 
-1. At roughly 1,000 visual tokens, native unpruned vLLM was previously
-   measured at 3.2--3.4x the end-to-end output throughput of Transformers.
-2. The benchmarked arbitrary-layer vLLM Flex and Transformers SDPA adapters
-   are both logical-mask implementations.  The Transformers actor code proves
-   that a new packed-varlen generation adapter can instead reduce the actual
-   attention sequence and keep FlashAttention active at every layer.
-3. Moving the boundary later should help both implementations because more
-   layers stay on FlashAttention.  Historical hybrid-vLLM data confirms the
-   direction, but the requested clean 1,024-token layer curve was not obtained.
-4. If speed at 5--10% retention becomes important, use packed/physically
-   compacted FlashAttention (including a cache-aware varlen Transformers
-   sampler) or a genuinely block-sparse Flex mask.  The current Flex path
-   remains valuable primarily because it is simple to modify and debug.
+1. The cache-aware Transformers path can use FlashAttention at every decoder
+   layer.  It no longer needs SDPA after pruning.
+2. Hybrid vLLM remains faster in every clean case: batch-1 end-to-end speedup
+   is 1.40--1.56×, and the two batch-4 confirmation points are 1.39× and 1.63×.
+3. Moving the boundary from layer 0 to 15 reduces total latency by roughly
+   12--18%, because more early layers stay on their native dense Flash path and
+   fewer layers pay packing/Flex mask overhead.
+4. Doubling visual tokens mostly increases TTFT.  At layer 15/10%, vLLM total
+   latency rose from 0.784 to 0.863s, while Transformers rose from 1.209 to
+   1.329s; decode time barely moved.
+5. 50%→10%→5% retention changes total latency by less than about 2% in this
+   batch-1 workload.  Varlen Flash reduces attention rows, but QKV projections,
+   MLPs, vision encoding, cache gathering, and launch overhead still operate.
+   Extreme pruning is therefore more useful for algorithm/quality experiments
+   than as a guaranteed wall-clock acceleration at this model size.
 
 ## Reproduction
 
