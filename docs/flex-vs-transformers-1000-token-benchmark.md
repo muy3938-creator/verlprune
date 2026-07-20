@@ -18,13 +18,20 @@ The short backend labels need one important qualification:
 | `vllm_flex` | vLLM FlashAttention | vLLM FlexAttention `score_mod` | full paged KV retained; logical mask |
 | `transformers_flash` | Hugging Face FlashAttention 2 | PyTorch SDPA + boolean mask | full DynamicCache retained; logical mask |
 
-The Transformers reference is therefore not “all FlashAttention” after
-pruning.  FlashAttention 2 cannot consume the arbitrary per-key mask used by
-this experiment, so the existing cache-aware adapter changes to SDPA after the
-boundary.  Likewise, current Flex `score_mod` masks logical keys but does not
-physically compact vLLM's paged cache or guarantee structured sparse block
-skipping.  A lower keep ratio can change outputs without reducing physical KV
-traffic proportionally.
+The benchmarked Transformers reference is therefore not “all FlashAttention”
+after pruning.  This is a limitation of the current cache-aware generation
+adapter, which explicitly changes to SDPA after the boundary; it is **not** a
+fundamental FlashAttention limitation.  The actor/training implementation
+already gathers retained Q/K/V into packed variable-length sequences, builds
+`cu_seqlens`, calls `flash_attn_varlen_func`, and scatters the compact output
+back.  The same construction can be adapted to generation by packing the
+selected cached KV independently for each request and using query/KV
+`cu_seqlens` during prefill and decode.
+
+Current Flex `score_mod` still masks logical keys without physically compacting
+vLLM's paged cache or guaranteeing structured sparse block skipping.  The
+current benchmark therefore compares the two adapters as they existed, not the
+intended all-Flash Transformers implementation.
 
 ## Controlled protocol
 
@@ -133,16 +140,17 @@ as a clean speedup measurement.
 
 1. At roughly 1,000 visual tokens, native unpruned vLLM was previously
    measured at 3.2--3.4x the end-to-end output throughput of Transformers.
-2. The current arbitrary-layer vLLM Flex and Transformers SDPA adapters are
-   both logical-mask implementations.  Neither should be expected to scale
-   with a 10% or 5% keep ratio as if only that fraction of KV were read.
+2. The benchmarked arbitrary-layer vLLM Flex and Transformers SDPA adapters
+   are both logical-mask implementations.  The Transformers actor code proves
+   that a new packed-varlen generation adapter can instead reduce the actual
+   attention sequence and keep FlashAttention active at every layer.
 3. Moving the boundary later should help both implementations because more
    layers stay on FlashAttention.  Historical hybrid-vLLM data confirms the
    direction, but the requested clean 1,024-token layer curve was not obtained.
-4. If speed at 5--10% retention becomes important, use physical token/KV
-   compaction (the compact-Flash path) or a genuinely block-sparse Flex mask.
-   The current Flex path remains valuable primarily because it is simple to
-   modify and debug.
+4. If speed at 5--10% retention becomes important, use packed/physically
+   compacted FlashAttention (including a cache-aware varlen Transformers
+   sampler) or a genuinely block-sparse Flex mask.  The current Flex path
+   remains valuable primarily because it is simple to modify and debug.
 
 ## Reproduction
 

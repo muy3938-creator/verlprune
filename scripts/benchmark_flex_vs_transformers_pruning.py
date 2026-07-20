@@ -10,8 +10,11 @@ The comparison is intentionally explicit about the kernels in use:
 
 * ``vllm_flex`` uses native vLLM FlashAttention through the pruning boundary
   and the repository's masked FlexAttention adapter afterwards.
-* ``transformers_flash`` uses Hugging Face FlashAttention 2 through the
-  pruning boundary and PyTorch SDPA with a boolean KV mask afterwards.
+* ``transformers_flash`` is the current cache-aware reference adapter: it uses
+  Hugging Face FlashAttention 2 through the pruning boundary and PyTorch SDPA
+  with a boolean KV mask afterwards.  This is an adapter limitation, not a
+  FlashAttention limitation; the actor/training path demonstrates that packed
+  variable-length Q/K/V can keep FlashAttention active after pruning.
 
 Neither late-layer path physically compacts the KV cache.  This script is a
 latency benchmark for the current research implementations, not a claim that
