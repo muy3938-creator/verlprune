@@ -153,6 +153,10 @@ FlashAttention-before-pruning does not materially enlarge the average or K3 gap,
 and it improves several tail metrics relative to all-Flex rollout. It is safe to
 keep as an experimental backend, with explicit monitoring for rare BF16 outliers.
 
+A follow-up 64/64-token control isolates backend-only behavior without any
+visual-token removal. See `docs/backend-only-no-prune-parity.md`; it confirms
+that native, all-Flex, and hybrid rollout/actor errors remain in the same range.
+
 The reusable test driver is `scripts/rollout_actor_replay_parity.py`. Raw rollout,
 actor, per-case comparison, and pooled summary JSON files are stored under
 `artifacts/rollout-actor-parity-h20/`.

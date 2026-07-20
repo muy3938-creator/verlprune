@@ -67,6 +67,7 @@ def run_rollout(
     seed: int,
     gpu_memory_utilization: float,
     baseline_unpruned: bool,
+    plugin_no_prune: bool,
 ) -> None:
     os.environ.setdefault("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
     os.environ.setdefault("VLLM_PLUGINS", "vision_opd_token_pruning")
@@ -82,6 +83,11 @@ def run_rollout(
 
     if temperature <= 0:
         raise ValueError("actor parity requires a positive rollout temperature")
+    if baseline_unpruned and plugin_no_prune:
+        raise ValueError("native baseline and plugin no-prune modes are mutually exclusive")
+    if plugin_no_prune and selector_input == "decode_query":
+        raise ValueError("plugin no-prune diagnostics require a static selector")
+    effective_keep_ratio = 1.0 - 1e-9 if plugin_no_prune else keep_ratio
     output_dir.mkdir(parents=True, exist_ok=True)
     processor = AutoProcessor.from_pretrained(model_path, use_fast=False)
     prompt = _prompt(processor)
@@ -97,7 +103,7 @@ def run_rollout(
         if baseline_unpruned
         else VisionTokenPruningConfig(
             enabled=True,
-            keep_ratio=keep_ratio,
+            keep_ratio=effective_keep_ratio,
             prune_after_layer=prune_after_layer,
             layerwise_backend="flex",
             pre_pruning_backend=pre_pruning_backend,
@@ -128,7 +134,7 @@ def run_rollout(
     else:
         llm_kwargs.update(
             enable_return_routed_experts=True,
-            video_pruning_rate=1.0 - keep_ratio,
+            video_pruning_rate=1.0 - effective_keep_ratio,
             enable_chunked_prefill=False,
             attention_config={"backend": "FLEX_ATTENTION"},
             hf_overrides={
@@ -180,7 +186,7 @@ def run_rollout(
         elif selector_input == "decode_query":
             selection = decode_vllm_dynamic_selection_capture(
                 generated.routed_experts,
-                nominal_keep_ratio=keep_ratio,
+                nominal_keep_ratio=effective_keep_ratio,
                 original_visual_token_count=original_visual_tokens,
                 selector=selector,
                 selector_kwargs=selector_kwargs,
@@ -189,12 +195,17 @@ def run_rollout(
         else:
             selection = decode_vllm_selection_capture(
                 generated.routed_experts,
-                keep_ratio=keep_ratio,
+                keep_ratio=effective_keep_ratio,
                 original_visual_token_count=original_visual_tokens,
                 selector=selector,
                 selector_kwargs=selector_kwargs,
             )
             selection_wire = selection.to_wire()
+            if plugin_no_prune and len(selection.kept_visual_indices) != original_visual_tokens:
+                raise RuntimeError(
+                    "plugin no-prune diagnostic unexpectedly removed visual tokens: "
+                    f"kept {len(selection.kept_visual_indices)} of {original_visual_tokens}"
+                )
         samples.append(
             {
                 "sample_index": index,
@@ -212,7 +223,9 @@ def run_rollout(
         "image_grid_thw": grid,
         "original_visual_tokens": original_visual_tokens,
         "pruning_enabled": not baseline_unpruned,
-        "keep_ratio": keep_ratio,
+        "plugin_no_prune": plugin_no_prune,
+        "keep_ratio": effective_keep_ratio,
+        "requested_keep_ratio": keep_ratio,
         "prune_after_layer": prune_after_layer,
         "batch_size": batch_size,
         "response_length": response_length,
@@ -495,6 +508,7 @@ def summarize_case(case_dir: Path) -> dict:
                 )
             },
             "pruning_enabled": rollout.get("pruning_enabled", True),
+            "plugin_no_prune": rollout.get("plugin_no_prune", False),
         },
         "metrics": metrics,
     }
@@ -507,6 +521,132 @@ def summarize_case(case_dir: Path) -> dict:
 
 def discover_case_dirs(cases_root: Path) -> list[Path]:
     return sorted(path.parent for path in cases_root.glob("*/rollout.json"))
+
+
+def _absolute_difference_stats(values: list[float]) -> dict:
+    if not values:
+        return {"count": 0, "mean": None, "p95": None, "p99": None, "max": None}
+    ordered = sorted(values)
+    return {
+        "count": len(ordered),
+        "mean": sum(ordered) / len(ordered),
+        "p95": _quantile(ordered, 0.95),
+        "p99": _quantile(ordered, 0.99),
+        "max": ordered[-1],
+    }
+
+
+def compare_plugin_no_prune_backend_pairs(records: list[tuple]) -> dict:
+    pairs = {}
+    for name, rollout, actor, _ in records:
+        if not rollout.get("plugin_no_prune", False):
+            continue
+        key = (
+            int(rollout["prune_after_layer"]),
+            int(rollout["batch_size"]),
+            int(rollout["response_length"]),
+            int(rollout["seed"]),
+            str(rollout["selector"]),
+        )
+        pairs.setdefault(key, {})[str(rollout["pre_pruning_backend"])] = (
+            name,
+            rollout,
+            actor,
+        )
+
+    exact_rollout_differences = []
+    common_prefix_rollout_differences = []
+    exact_actor_differences = []
+    exact_sequence_count = 0
+    sequence_count = 0
+    matching_token_positions = 0
+    token_position_count = 0
+    pair_payload = {}
+    for key, backends in sorted(pairs.items()):
+        if set(backends) != {"flex", "flash"}:
+            continue
+        flex_name, flex_rollout, flex_actor = backends["flex"]
+        flash_name, flash_rollout, flash_actor = backends["flash"]
+        pair_exact = 0
+        pair_sequences = 0
+        pair_matching = 0
+        pair_positions = 0
+        for flex_sample, flash_sample, flex_log_probs, flash_log_probs in zip(
+            flex_rollout["samples"],
+            flash_rollout["samples"],
+            flex_actor["actor_log_probs"],
+            flash_actor["actor_log_probs"],
+            strict=True,
+        ):
+            flex_tokens = flex_sample["token_ids"]
+            flash_tokens = flash_sample["token_ids"]
+            pair_sequences += 1
+            pair_positions += len(flex_tokens)
+            pair_matching += sum(
+                flex_token == flash_token
+                for flex_token, flash_token in zip(
+                    flex_tokens,
+                    flash_tokens,
+                    strict=True,
+                )
+            )
+            common_prefix_length = 0
+            for flex_token, flash_token in zip(flex_tokens, flash_tokens, strict=True):
+                if flex_token != flash_token:
+                    break
+                common_prefix_length += 1
+            common_prefix_rollout_differences.extend(
+                abs(flex_value - flash_value)
+                for flex_value, flash_value in zip(
+                    flex_sample["rollout_log_probs"][:common_prefix_length],
+                    flash_sample["rollout_log_probs"][:common_prefix_length],
+                    strict=True,
+                )
+            )
+            if flex_tokens == flash_tokens:
+                pair_exact += 1
+                exact_rollout_differences.extend(
+                    abs(flex_value - flash_value)
+                    for flex_value, flash_value in zip(
+                        flex_sample["rollout_log_probs"],
+                        flash_sample["rollout_log_probs"],
+                        strict=True,
+                    )
+                )
+                exact_actor_differences.extend(
+                    abs(flex_value - flash_value)
+                    for flex_value, flash_value in zip(
+                        flex_log_probs,
+                        flash_log_probs,
+                        strict=True,
+                    )
+                )
+        exact_sequence_count += pair_exact
+        sequence_count += pair_sequences
+        matching_token_positions += pair_matching
+        token_position_count += pair_positions
+        pair_payload["|".join(str(value) for value in key)] = {
+            "flex_case": flex_name,
+            "hybrid_case": flash_name,
+            "sequence_count": pair_sequences,
+            "exact_sequence_count": pair_exact,
+            "matching_token_positions": pair_matching,
+            "token_position_count": pair_positions,
+        }
+
+    return {
+        "pair_count": len(pair_payload),
+        "sequence_count": sequence_count,
+        "exact_sequence_count": exact_sequence_count,
+        "exact_sequence_rate": exact_sequence_count / sequence_count if sequence_count else None,
+        "matching_token_positions": matching_token_positions,
+        "token_position_count": token_position_count,
+        "token_position_match_rate": matching_token_positions / token_position_count if token_position_count else None,
+        "same_prefix_rollout_logprob_abs_diff": _absolute_difference_stats(common_prefix_rollout_differences),
+        "exact_sequence_rollout_logprob_abs_diff": _absolute_difference_stats(exact_rollout_differences),
+        "exact_sequence_actor_logprob_abs_diff": _absolute_difference_stats(exact_actor_differences),
+        "pairs": pair_payload,
+    }
 
 
 def aggregate_cases(case_dirs: list[Path]) -> dict:
@@ -522,23 +662,38 @@ def aggregate_cases(case_dirs: list[Path]) -> dict:
         "core_all_flex": lambda name, rollout: (
             name.startswith("uniform-")
             and rollout.get("pruning_enabled", True)
+            and not rollout.get("plugin_no_prune", False)
             and rollout["pre_pruning_backend"] == "flex"
         ),
         "core_hybrid": lambda name, rollout: (
             name.startswith("uniform-")
             and rollout.get("pruning_enabled", True)
+            and not rollout.get("plugin_no_prune", False)
             and rollout["pre_pruning_backend"] == "flash"
         ),
         "expanded_hybrid": lambda name, rollout: (
             rollout.get("pruning_enabled", True) and rollout["pre_pruning_backend"] == "flash"
         ),
         "paper_algorithms_hybrid": lambda name, rollout: name.startswith("algorithm-"),
+        "plugin_no_prune_all_flex": lambda name, rollout: (
+            rollout.get("plugin_no_prune", False) and rollout["pre_pruning_backend"] == "flex"
+        ),
+        "plugin_no_prune_hybrid": lambda name, rollout: (
+            rollout.get("plugin_no_prune", False) and rollout["pre_pruning_backend"] == "flash"
+        ),
         "all_pruned": lambda name, rollout: rollout.get("pruning_enabled", True),
         "all_cases": lambda name, rollout: True,
     }
     group_payload = {}
     for group_name, predicate in groups.items():
         selected = [record for record in records if predicate(record[0], record[1])]
+        if not selected:
+            group_payload[group_name] = {
+                "case_count": 0,
+                "case_names": [],
+                "metrics": None,
+            }
+            continue
         rollout_rows = [sample["rollout_log_probs"] for _, rollout, _, _ in selected for sample in rollout["samples"]]
         actor_rows = [row for _, _, actor, _ in selected for row in actor["actor_log_probs"]]
         group_payload[group_name] = {
@@ -549,6 +704,7 @@ def aggregate_cases(case_dirs: list[Path]) -> dict:
     return {
         "case_count": len(records),
         "groups": group_payload,
+        "plugin_no_prune_backend_pairs": compare_plugin_no_prune_backend_pairs(records),
         "cases": {name: comparison for name, _, _, comparison in records},
     }
 
@@ -575,6 +731,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=1234)
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.28)
     parser.add_argument("--baseline-unpruned", action="store_true")
+    parser.add_argument("--plugin-no-prune", action="store_true")
     args = parser.parse_args()
 
     if args.stage == "rollout":
@@ -593,6 +750,7 @@ def main() -> None:
             seed=args.seed,
             gpu_memory_utilization=args.gpu_memory_utilization,
             baseline_unpruned=args.baseline_unpruned,
+            plugin_no_prune=args.plugin_no_prune,
         )
         return
 

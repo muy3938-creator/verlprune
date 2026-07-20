@@ -3,6 +3,8 @@ from pathlib import Path
 
 import pytest
 
+from verl.models.vision_token_pruning.protocol import compute_keep_count
+
 
 def _module():
     path = Path(__file__).parents[2] / "scripts" / "rollout_actor_replay_parity.py"
@@ -45,3 +47,17 @@ def test_parity_metrics_can_pool_variable_response_lengths():
     assert metrics["response_length"] is None
     assert metrics["response_length_min"] == 1
     assert metrics["response_length_max"] == 2
+
+
+def test_absolute_difference_stats_handles_empty_and_tail_values():
+    module = _module()
+
+    assert module._absolute_difference_stats([])["count"] == 0
+    metrics = module._absolute_difference_stats([0.1, 0.2, 0.3])
+    assert metrics["mean"] == pytest.approx(0.2)
+    assert metrics["p99"] == pytest.approx(0.3)
+    assert metrics["max"] == pytest.approx(0.3)
+
+
+def test_plugin_no_prune_diagnostic_ratio_keeps_every_visual_token():
+    assert compute_keep_count(64, 1.0 - 1e-9) == 64
