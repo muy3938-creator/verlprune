@@ -52,17 +52,23 @@ def qwen3_vl_attn_forward(
     layerwise_mask = kwargs.pop("vision_token_pruning_mask", None)
     dynamic_mask = kwargs.pop("vision_token_dynamic_attention_mask", None)
     prune_after_layer = kwargs.pop("vision_token_prune_after_layer", None)
-    if layerwise_mask is not None and dynamic_mask is not None:
-        raise ValueError("static and dynamic visual-token masks are mutually exclusive")
+    prefill_prune_after_layer = kwargs.pop(
+        "vision_token_prefill_prune_after_layer",
+        prune_after_layer,
+    )
+    decode_prune_after_layer = kwargs.pop(
+        "vision_token_decode_prune_after_layer",
+        prune_after_layer,
+    )
     apply_pruning = (
         layerwise_mask is not None
-        and prune_after_layer is not None
-        and self.layer_idx > int(prune_after_layer)
+        and prefill_prune_after_layer is not None
+        and self.layer_idx > int(prefill_prune_after_layer)
     )
     apply_dynamic = (
         dynamic_mask is not None
-        and prune_after_layer is not None
-        and self.layer_idx > int(prune_after_layer)
+        and decode_prune_after_layer is not None
+        and self.layer_idx > int(decode_prune_after_layer)
     )
 
     input_shape = hidden_states.shape[:-1]
@@ -82,7 +88,10 @@ def qwen3_vl_attn_forward(
         )
 
     retained_indices = None
-    if apply_pruning and attention_mask is None:
+    static_keep_mask = None
+    if apply_pruning:
+        static_keep_mask = layerwise_mask.to(device=query_states.device, dtype=torch.bool)
+    if apply_pruning and not apply_dynamic and attention_mask is None:
         if hidden_states.shape[0] != 1 or layerwise_mask.numel() != hidden_states.shape[1]:
             raise ValueError("packed Qwen3-VL layerwise pruning expects one flattened sequence")
         retained_indices = (
@@ -94,7 +103,7 @@ def qwen3_vl_attn_forward(
         query_states = query_states.index_select(2, retained_indices)
         key_states = key_states.index_select(2, retained_indices)
         value_states = value_states.index_select(2, retained_indices)
-    elif apply_pruning:
+    elif apply_pruning and not apply_dynamic:
         raise ValueError("padded Qwen3-VL layerwise replay is not supported; enable remove padding")
 
     if apply_dynamic:
@@ -102,6 +111,8 @@ def qwen3_vl_attn_forward(
         if dynamic_mask.shape != (hidden_states.shape[0], sequence_length, sequence_length):
             raise ValueError("Qwen3-VL dynamic mask must have shape [batch, query, key]")
         allowed = dynamic_mask.to(device=query_states.device, dtype=torch.bool)
+        if static_keep_mask is not None:
+            allowed = allowed & static_keep_mask[:, None, :]
         allowed &= torch.ones(
             (sequence_length, sequence_length),
             dtype=torch.bool,
@@ -137,6 +148,8 @@ def qwen3_vl_attn_forward(
             (hidden_states.shape[0], hidden_states.shape[1], *compact_output.shape[2:])
         )
         attn_output.index_copy_(1, retained_indices, compact_output)
+    elif apply_pruning and static_keep_mask is not None:
+        attn_output.masked_fill_(~static_keep_mask[:, :, None, None], 0)
     attn_output = attn_output.reshape(*input_shape, -1).contiguous()
     return self.o_proj(attn_output), attn_weights
 

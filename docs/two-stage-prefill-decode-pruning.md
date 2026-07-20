@@ -17,11 +17,13 @@ With `prefill_keep_ratio=0.5` and `keep_ratio=0.5`, the second ratio is
 relative to the first-stage subset. The nominal final visual fraction is
 therefore `0.5 * 0.5 = 0.25`, not 0.5.
 
-The first stage uses `embedding_norm` before decoder layer 0. It physically
-shortens the prompt and paged KV cache. The second stage uses the existing
-VisionPulse-style query/key score at the configured anchor layer and installs
-a per-query FlexAttention mask for subsequent layers. Layers through the
-anchor can use FlashAttention via `pre_pruning_backend=flash`.
+The first stage uses `embedding_norm` and now has an independent boundary.
+`prefill_prune_after_layer=-1` physically shortens the prompt and paged KV
+cache before decoder layer 0. A non-negative value preserves the complete
+prompt/KV, lets layers through that boundary see all visual tokens, and applies
+the first subset as a static FlexAttention mask afterward. The second stage
+uses the existing VisionPulse-style query/key score at its later anchor and
+installs a per-query mask for subsequent layers.
 
 ## Configuration
 
@@ -36,6 +38,7 @@ vision_token_pruning:
   prefill_keep_ratio: 0.5
   prefill_selector: embedding_norm
   prefill_selector_kwargs: {}
+  prefill_prune_after_layer: -1
 
   # Stage 2: each query sees 16 of the cached 32 after layer 15.
   keep_ratio: 0.5
@@ -56,6 +59,18 @@ default, so existing physical-only and dynamic-only configurations remain
 valid. The `vision_pruning_experiment.yaml` preset and launcher enable the
 two-stage mode by default.
 
+For arbitrary delayed boundaries, for example `7 -> 15`, set:
+
+```yaml
+prefill_prune_after_layer: 7
+prune_after_layer: 15
+```
+
+The first boundary must not follow the decode boundary; equal boundaries are
+valid and apply both subsets after the same anchor. This mode is intentionally mask-only for the
+first stage: it does not claim KV-memory reduction because vLLM still stores
+the full prompt cache. That choice avoids modifying the paged-cache allocator.
+
 ## Exact rollout-to-actor replay
 
 The versioned `TwoStageVisionTokenSelection` contains two records:
@@ -64,10 +79,11 @@ The versioned `TwoStageVisionTokenSelection` contains two records:
 - `decode`: one selection per query, indexed relative to the retained prefill
   subset.
 
-On the actor, replay first removes the prefill-dropped positions and compacts
-the visual embeddings. It then maps each decode-relative index onto the
-remaining image positions and packs the resulting query-by-key mask with the
-same compact attention mask. The unpruned OPD teacher receives neither stage.
+In physical mode, actor replay first removes the prefill-dropped positions and
+compacts the visual embeddings. In delayed mode it keeps the full sequence,
+applies the static mask only after the first boundary, and combines it with the
+query-by-key dynamic mask after the second boundary. The unpruned OPD teacher
+receives neither stage.
 
 This distinction is important. Treating second-stage indices as original
 indices silently routes the wrong KV entries even when both stages retain the

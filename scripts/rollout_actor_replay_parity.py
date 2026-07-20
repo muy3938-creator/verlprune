@@ -16,6 +16,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 
+DELAYED_PREFILL_METADATA_PRUNING_RATE = 1e-9
+
+
 def _make_image(path: Path, variant: int):
     from PIL import Image, ImageDraw
 
@@ -71,6 +74,7 @@ def run_rollout(
     prefill_keep_ratio: float | None,
     prefill_selector: str,
     prefill_selector_kwargs: dict,
+    prefill_prune_after_layer: int,
 ) -> None:
     os.environ.setdefault("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
     os.environ.setdefault("VLLM_PLUGINS", "vision_opd_token_pruning")
@@ -118,6 +122,7 @@ def run_rollout(
             prefill_keep_ratio=prefill_keep_ratio,
             prefill_selector=prefill_selector,
             prefill_selector_kwargs=prefill_selector_kwargs,
+            prefill_prune_after_layer=prefill_prune_after_layer,
         )
     )
     processed = processor(text=[prompt], images=[images[0]], return_tensors="pt")
@@ -155,7 +160,11 @@ def run_rollout(
         }
         llm_kwargs.update(
             enable_return_routed_experts=True,
-            video_pruning_rate=1.0 - (prefill_keep_ratio or effective_keep_ratio),
+            video_pruning_rate=(
+                1.0 - (prefill_keep_ratio or effective_keep_ratio)
+                if prefill_keep_ratio is None or prefill_prune_after_layer < 0
+                else DELAYED_PREFILL_METADATA_PRUNING_RATE
+            ),
             enable_chunked_prefill=not layerwise,
             hf_overrides={
                 "architectures": [
@@ -271,6 +280,7 @@ def run_rollout(
         "prefill_keep_ratio": prefill_keep_ratio,
         "prefill_selector": prefill_selector,
         "prefill_selector_kwargs": prefill_selector_kwargs,
+        "prefill_prune_after_layer": prefill_prune_after_layer,
         "temperature": temperature,
         "seed": seed,
         "samples": samples,
@@ -406,6 +416,7 @@ def run_actor(case_dirs: list[Path]) -> None:
                 prefill_keep_ratio=reference.get("prefill_keep_ratio"),
                 prefill_selector=str(reference.get("prefill_selector", "embedding_norm")),
                 prefill_selector_kwargs=dict(reference.get("prefill_selector_kwargs", {})),
+                prefill_prune_after_layer=int(reference.get("prefill_prune_after_layer", -1)),
             )
         )
         with patch("torch.distributed.get_rank", return_value=0):
@@ -554,6 +565,7 @@ def summarize_case(case_dir: Path) -> dict:
             },
             "prefill_keep_ratio": rollout.get("prefill_keep_ratio"),
             "prefill_selector": rollout.get("prefill_selector"),
+            "prefill_prune_after_layer": rollout.get("prefill_prune_after_layer", -1),
             "pruning_enabled": rollout.get("pruning_enabled", True),
             "plugin_no_prune": rollout.get("plugin_no_prune", False),
         },
@@ -776,6 +788,7 @@ def main() -> None:
     parser.add_argument("--prefill-keep-ratio", type=float)
     parser.add_argument("--prefill-selector", default="embedding_norm")
     parser.add_argument("--prefill-selector-kwargs", type=json.loads, default={})
+    parser.add_argument("--prefill-prune-after-layer", type=int, default=-1)
     parser.add_argument("--pre-pruning-backend", choices=("flex", "flash"), default="flash")
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=1234)
@@ -804,6 +817,7 @@ def main() -> None:
             prefill_keep_ratio=args.prefill_keep_ratio,
             prefill_selector=args.prefill_selector,
             prefill_selector_kwargs=args.prefill_selector_kwargs,
+            prefill_prune_after_layer=args.prefill_prune_after_layer,
         )
         return
 

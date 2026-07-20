@@ -129,10 +129,10 @@ def decode_vllm_two_stage_selection_capture(
     decode_selector: str,
     decode_selector_kwargs: Mapping[str, Any] | None,
 ) -> TwoStageVisionTokenSelection:
-    """Decode physical-prefill metadata and dynamic routes from one channel.
+    """Decode first-stage metadata and dynamic routes from one channel.
 
     Layer-zero capture rows whose final capacity slot is one describe a
-    physically retained visual token: slot zero stores its one-based original
+    first-stage retained visual token: slot zero stores its one-based original
     index and slot one stores the original visual-token count. Other rows are
     ordinary per-query dynamic selections relative to the retained subset.
     """

@@ -12,6 +12,7 @@ SELECTOR_KWARGS="${SELECTOR_KWARGS:-}"
 PREFILL_KEEP_RATIO="${PREFILL_KEEP_RATIO:-0.5}"
 PREFILL_SELECTOR="${PREFILL_SELECTOR:-embedding_norm}"
 PREFILL_SELECTOR_KWARGS="${PREFILL_SELECTOR_KWARGS:-}"
+PREFILL_PRUNE_AFTER_LAYER="${PREFILL_PRUNE_AFTER_LAYER:--1}"
 SELECTOR_INPUT="${SELECTOR_INPUT:-decode_query}"
 PRE_PRUNING_BACKEND="${PRE_PRUNING_BACKEND:-flash}"
 PRUNE_AFTER_LAYER="${PRUNE_AFTER_LAYER:-15}"
@@ -43,6 +44,7 @@ python3 -m verl.trainer.main_ppo --config-name vision_pruning_experiment \
     "actor_rollout_ref.model.vision_token_pruning.selector=${SELECTOR}" \
     "actor_rollout_ref.model.vision_token_pruning.prefill_keep_ratio=${PREFILL_KEEP_RATIO}" \
     "actor_rollout_ref.model.vision_token_pruning.prefill_selector=${PREFILL_SELECTOR}" \
+    "actor_rollout_ref.model.vision_token_pruning.prefill_prune_after_layer=${PREFILL_PRUNE_AFTER_LAYER}" \
     "actor_rollout_ref.model.vision_token_pruning.selector_input=${SELECTOR_INPUT}" \
     "actor_rollout_ref.model.vision_token_pruning.pre_pruning_backend=${PRE_PRUNING_BACKEND}" \
     "actor_rollout_ref.model.vision_token_pruning.prune_after_layer=${PRUNE_AFTER_LAYER}" \

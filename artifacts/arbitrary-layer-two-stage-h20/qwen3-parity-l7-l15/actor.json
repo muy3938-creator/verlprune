@@ -1,0 +1,17 @@
+{
+  "actor_path": "DataParallelPPOActor._forward_micro_batch",
+  "use_remove_padding": true,
+  "attention_backend": "flash_attention_2",
+  "actor_log_probs": [
+    [
+      -0.00524139404296875,
+      -0.0,
+      -0.0,
+      -0.0,
+      -1.52587890625e-05,
+      -0.000102996826171875,
+      -1.52587890625e-05,
+      -0.0
+    ]
+  ]
+}

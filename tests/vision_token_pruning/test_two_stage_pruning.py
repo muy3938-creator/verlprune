@@ -130,3 +130,60 @@ def test_two_stage_capture_and_actor_replay_use_decode_indices_relative_to_prefi
         "vision_pulse",
         OPTIONS,
     )
+
+
+def test_delayed_two_stage_actor_keeps_full_sequence_and_emits_both_layer_masks():
+    config = VisionTokenPruningConfig(
+        enabled=True,
+        keep_ratio=0.5,
+        selector="vision_pulse",
+        selector_kwargs=OPTIONS,
+        selector_input="decode_query",
+        prune_after_layer=3,
+        prefill_keep_ratio=0.5,
+        prefill_selector="embedding_norm",
+        prefill_prune_after_layer=1,
+    )
+    selection = TwoStageVisionTokenSelection(
+        prefill=VisionTokenSelection(
+            keep_ratio=0.5,
+            selector="embedding_norm",
+            original_visual_token_count=4,
+            kept_visual_indices=(0, 2),
+        ),
+        decode=DynamicVisionTokenSelection(
+            nominal_keep_ratio=0.5,
+            selector="vision_pulse",
+            selector_fingerprint=compute_selector_fingerprint("vision_pulse", OPTIONS),
+            original_visual_token_count=2,
+            # Delayed mode has one capture row per full sequence token.
+            query_kept_visual_indices=((), (), (), (), (), (1,), (0,)),
+        ),
+    )
+    attached = attach_selection_to_multi_modal_inputs({}, selection.to_wire())
+    input_ids = torch.tensor([[7, 99, 99, 99, 99, 8, 10]])
+    attention_mask = torch.ones_like(input_ids)
+
+    prepared = prepare_actor_pruning_inputs(
+        input_ids=input_ids,
+        attention_mask=attention_mask,
+        per_sample_multi_modal_inputs=[attached],
+        image_token_id=99,
+        config=config,
+        apply_pruning=True,
+    )
+
+    assert torch.equal(prepared.attention_mask, attention_mask)
+    assert prepared.layerwise_attention_mask.tolist() == [[1, 1, 0, 1, 0, 1, 1]]
+    dynamic = prepared.dynamic_layerwise_attention_mask
+    assert dynamic is not None
+    assert not bool(dynamic[0, :, [2, 4]].any())
+    assert dynamic[0, 5, [1, 3]].tolist() == [False, True]
+    assert dynamic[0, 6, [1, 3]].tolist() == [True, False]
+    assert "vision_token_keep_mask" not in prepared.per_sample_multi_modal_inputs[0]
+
+    kwargs = prepared.layerwise_forward_kwargs(config)
+    assert kwargs["vision_token_pruning_mask"] is prepared.layerwise_attention_mask
+    assert kwargs["vision_token_dynamic_attention_mask"] is dynamic
+    assert kwargs["vision_token_prefill_prune_after_layer"] == 1
+    assert kwargs["vision_token_decode_prune_after_layer"] == 3

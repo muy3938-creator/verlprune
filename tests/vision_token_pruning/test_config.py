@@ -26,6 +26,62 @@ def test_non_negative_layer_selects_experimental_layerwise_backend():
     assert config.backend_name == "layerwise_flex"
 
 
+def test_two_stage_delayed_prefill_boundary_is_explicit_and_ordered():
+    config = VisionTokenPruningConfig(
+        enabled=True,
+        keep_ratio=0.25,
+        selector="vision_pulse",
+        selector_input="decode_query",
+        selector_kwargs={"budget_mode": "fixed"},
+        prefill_keep_ratio=0.5,
+        prefill_prune_after_layer=7,
+        prune_after_layer=15,
+    )
+
+    assert config.uses_delayed_prefill_pruning
+    assert not config.uses_physical_prefill_pruning
+    assert config.backend_name == "prefill_mask_then_dynamic_decode_flex"
+    assert config.to_backend_payload()["prefill_prune_after_layer"] == 7
+
+
+@pytest.mark.parametrize(("prefill_layer", "decode_layer"), [(16, 15), (34, 27)])
+def test_two_stage_prefill_boundary_must_precede_decode_boundary(prefill_layer, decode_layer):
+    with pytest.raises(ValueError, match="prefill_prune_after_layer"):
+        VisionTokenPruningConfig(
+            enabled=True,
+            keep_ratio=0.25,
+            selector="vision_pulse",
+            selector_input="decode_query",
+            prefill_keep_ratio=0.5,
+            prefill_prune_after_layer=prefill_layer,
+            prune_after_layer=decode_layer,
+        )
+
+
+def test_two_stage_can_apply_both_selections_after_the_same_anchor_layer():
+    config = VisionTokenPruningConfig(
+        enabled=True,
+        keep_ratio=0.5,
+        selector="vision_pulse",
+        selector_input="decode_query",
+        prefill_keep_ratio=0.5,
+        prefill_prune_after_layer=15,
+        prune_after_layer=15,
+    )
+
+    assert config.uses_delayed_prefill_pruning
+
+
+def test_prefill_boundary_without_first_stage_ratio_is_rejected():
+    with pytest.raises(ValueError, match="prefill_keep_ratio"):
+        VisionTokenPruningConfig(
+            enabled=True,
+            keep_ratio=0.5,
+            prune_after_layer=15,
+            prefill_prune_after_layer=7,
+        )
+
+
 def test_invalid_layer_boundary_is_rejected():
     with pytest.raises(ValueError, match="prune_after_layer"):
         VisionTokenPruningConfig(enabled=True, keep_ratio=0.5, prune_after_layer=-2)

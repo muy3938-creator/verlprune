@@ -102,6 +102,10 @@ vision_token_pruning:
 
   prefill_selector_kwargs: {}
 
+  # -1 physically prunes before decoder layer 0; N keeps full KV through
+  # layer N and applies the first-stage subset from layer N+1 onward.
+  prefill_prune_after_layer: -1
+
   # -1 selects before layer 0 and physically shares the reduced visual KV with decode
   prune_after_layer: -1
 

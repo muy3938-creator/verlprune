@@ -192,6 +192,82 @@ def test_flash_pre_boundary_falls_back_for_multimodal_prefix_mask():
     assert impl._flash_impl is None
 
 
+def test_delayed_two_stage_plan_applies_static_then_dynamic_slot_masks():
+    config = VisionTokenPruningConfig(
+        enabled=True,
+        keep_ratio=0.5,
+        prune_after_layer=3,
+        selector="vision_pulse",
+        selector_input="decode_query",
+        selector_kwargs={"budget_mode": "fixed", "capture_capacity": 8},
+        prefill_keep_ratio=0.5,
+        prefill_prune_after_layer=1,
+    )
+    plan = LayerwiseFlexPruningPlan(
+        prune_after_layer=3,
+        prefill_prune_after_layer=1,
+        selector_input="decode_query",
+        candidate_ids=torch.tensor([0, 1, 0, 2, 0], device="cuda"),
+        query_keep_mask=torch.tensor([True, True, False, True, True], device="cuda"),
+        selection_engine=VisionTokenSelectionEngine(config, seed=7),
+    )
+    metadata = _metadata(query_tokens=5, sequence_length=5, slot_start=16)
+    query = torch.randn(5, 2, 16, dtype=torch.bfloat16, device="cuda")
+    key = torch.randn_like(query)
+    value = torch.randn_like(query)
+    cache = torch.zeros(2, 2, 16, 2, 16, dtype=torch.bfloat16, device="cuda")
+    impl = _implementation()
+
+    def fake_flex_forward(_impl, _layer, _query, _key, _value, _cache, _metadata, output, *_):
+        return output.fill_(1)
+
+    stage_layer = _layer(2)
+    stage_output = torch.empty_like(query)
+    with (
+        patch(
+            "vllm.forward_context.get_forward_context",
+            return_value=_context(stage_layer.layer_name, metadata, plan),
+        ),
+        patch.object(FlexAttentionImpl, "forward", autospec=True, side_effect=fake_flex_forward),
+    ):
+        impl.forward(stage_layer, query, key, value, cache, metadata, stage_output)
+
+    assert torch.count_nonzero(stage_output[2]) == 0
+    static_score_mod = metadata.transformed_score_mod
+    assert static_score_mod is not None
+    zero = torch.tensor(0.0, device="cuda")
+    index = torch.tensor(0, device="cuda")
+    assert torch.isneginf(static_score_mod(zero, index, index, index, torch.tensor(18, device="cuda")))
+
+    request_keep = torch.ones((1, metadata.total_cache_tokens), dtype=torch.bool, device="cuda")
+    request_keep[0, 17:20] = torch.tensor([True, False, False], device="cuda")
+    plan.dynamic_request_slot_keep = request_keep
+    plan.dynamic_request_by_query = torch.zeros(5, dtype=torch.long, device="cuda")
+    plan.dynamic_query_active = torch.tensor([False, False, False, False, True], device="cuda")
+    post_layer = _layer(4)
+    with (
+        patch(
+            "vllm.forward_context.get_forward_context",
+            return_value=_context(post_layer.layer_name, metadata, plan),
+        ),
+        patch.object(FlexAttentionImpl, "forward", autospec=True, side_effect=fake_flex_forward),
+    ):
+        impl.forward(post_layer, query, key, value, cache, metadata, torch.empty_like(query))
+
+    dynamic_score_mod = metadata.transformed_score_mod
+    assert dynamic_score_mod is not None
+    active_query = torch.tensor(4, device="cuda")
+    assert not torch.isneginf(
+        dynamic_score_mod(zero, index, index, active_query, torch.tensor(17, device="cuda"))
+    )
+    assert torch.isneginf(
+        dynamic_score_mod(zero, index, index, active_query, torch.tensor(18, device="cuda"))
+    )
+    assert torch.isneginf(
+        dynamic_score_mod(zero, index, index, active_query, torch.tensor(19, device="cuda"))
+    )
+
+
 def test_boundary_key_selection_persists_into_decode_physical_slots():
     config = VisionTokenPruningConfig(
         enabled=True,

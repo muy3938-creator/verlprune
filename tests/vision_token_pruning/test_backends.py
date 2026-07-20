@@ -1,6 +1,7 @@
 import pytest
 
 from verl.models.vision_token_pruning.backends import (
+    DELAYED_PREFILL_METADATA_PRUNING_RATE,
     build_vllm_pruning_launch_options,
     resolve_vllm_backend,
 )
@@ -127,3 +128,27 @@ def test_two_stage_launch_uses_prefill_ratio_for_physical_prompt_and_decode_rati
     assert options.cli_args["attention_config"] == {"backend": "FLEX_ATTENTION"}
     assert options.hf_overrides["vision_token_pruning"]["keep_ratio"] == 0.25
     assert options.hf_overrides["vision_token_pruning"]["prefill_keep_ratio"] == 0.5
+
+
+def test_delayed_two_stage_launch_preserves_full_prompt_placeholders_and_kv():
+    config = VisionTokenPruningConfig(
+        enabled=True,
+        keep_ratio=0.25,
+        prune_after_layer=15,
+        selector="vision_pulse",
+        selector_input="decode_query",
+        selector_kwargs={"budget_mode": "fixed", "capture_capacity": 64},
+        prefill_keep_ratio=0.5,
+        prefill_prune_after_layer=7,
+    )
+
+    options = build_vllm_pruning_launch_options(
+        config,
+        model_type="qwen2_5_vl",
+        routing_replay_enabled=False,
+    )
+
+    assert options.cli_args["video_pruning_rate"] == pytest.approx(
+        DELAYED_PREFILL_METADATA_PRUNING_RATE
+    )
+    assert options.hf_overrides["vision_token_pruning"]["prefill_prune_after_layer"] == 7

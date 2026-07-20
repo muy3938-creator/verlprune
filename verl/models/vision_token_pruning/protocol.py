@@ -199,7 +199,7 @@ class DynamicVisionTokenSelection:
 
 @dataclass(frozen=True)
 class TwoStageVisionTokenSelection:
-    """Physical prefill selection plus per-query routing within that subset."""
+    """First-stage visual subset plus per-query routing within that subset."""
 
     prefill: VisionTokenSelection
     decode: DynamicVisionTokenSelection
@@ -216,7 +216,7 @@ class TwoStageVisionTokenSelection:
             )
         if self.decode.original_visual_token_count != len(self.prefill.kept_visual_indices):
             raise ValueError(
-                "two-stage decode indices must be relative to the physically retained prefill subset"
+                "two-stage decode indices must be relative to the retained first-stage subset"
             )
 
     @property

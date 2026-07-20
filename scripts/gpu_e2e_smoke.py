@@ -17,6 +17,9 @@ import time
 from pathlib import Path
 
 
+DELAYED_PREFILL_METADATA_PRUNING_RATE = 1e-9
+
+
 class GPUMemorySampler:
     def __init__(self, interval_s: float = 0.02) -> None:
         self.interval_s = interval_s
@@ -84,6 +87,7 @@ def run_rollout(
     prefill_keep_ratio: float | None,
     prefill_selector: str,
     prefill_selector_kwargs: dict,
+    prefill_prune_after_layer: int,
     gpu_memory_utilization: float,
     warmup_runs: int,
     measure_runs: int,
@@ -142,6 +146,7 @@ def run_rollout(
         prefill_keep_ratio=prefill_keep_ratio,
         prefill_selector=prefill_selector,
         prefill_selector_kwargs=prefill_selector_kwargs,
+        prefill_prune_after_layer=prefill_prune_after_layer,
     ).to_backend_payload()
     scheduler_token_budget = max(512, batch_size * (resolution * resolution // 196 + 128))
     if model_type == "qwen3_vl":
@@ -164,7 +169,11 @@ def run_rollout(
         enforce_eager=True,
         limit_mm_per_prompt={"image": 1, "video": 0},
         enable_return_routed_experts=True,
-        video_pruning_rate=1.0 - (prefill_keep_ratio or keep_ratio),
+        video_pruning_rate=(
+            1.0 - (prefill_keep_ratio or keep_ratio)
+            if prefill_keep_ratio is None or prefill_prune_after_layer < 0
+            else DELAYED_PREFILL_METADATA_PRUNING_RATE
+        ),
         enable_chunked_prefill=not layerwise,
         enable_prefix_caching=False,
         hf_overrides={
@@ -180,6 +189,7 @@ def run_rollout(
     if layerwise and layerwise_backend == "flex":
         llm_kwargs["attention_config"] = {"backend": "FLEX_ATTENTION"}
     llm = LLM(**llm_kwargs)
+    print("E2E_ENGINE_READY")
 
     from transformers import AutoProcessor
 
@@ -201,6 +211,7 @@ def run_rollout(
     ]
     prompt = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     processed = processor(text=[prompt], images=[image], return_tensors="pt")
+    print("E2E_PROCESSOR_READY")
     grid = processed["image_grid_thw"][0].tolist()
     image_token_id = getattr(
         processor,
@@ -221,6 +232,7 @@ def run_rollout(
         min_tokens=decode_tokens if fixed_output_tokens else 0,
         temperature=0.0,
     )
+    print("E2E_GENERATE_START")
     for _ in range(warmup_runs):
         llm.generate(requests, sampling_params)
 
@@ -312,6 +324,7 @@ def run_rollout(
         "prefill_keep_ratio": prefill_keep_ratio,
         "prefill_selector": prefill_selector,
         "prefill_selector_kwargs": prefill_selector_kwargs,
+        "prefill_prune_after_layer": prefill_prune_after_layer,
         "rollout_seconds": rollout_seconds,
         "rollout_latencies": rollout_latencies,
         "median_rollout_seconds": statistics.median(rollout_latencies),
@@ -460,7 +473,9 @@ def run_train_step(output_dir: Path, learning_rate: float, steps: int) -> None:
     if two_stage:
         from verl.models.vision_token_pruning.config import VisionTokenPruningConfig
 
-        student_attention_mask, dynamic_attention_mask = replay_two_stage_rollout_selection(
+        prefill_prune_after_layer = int(record.get("prefill_prune_after_layer", -1))
+        delayed_prefill = prefill_prune_after_layer >= 0
+        student_attention_mask, stage_one_attention_mask, dynamic_attention_mask = replay_two_stage_rollout_selection(
             full_input_ids,
             full_attention_mask,
             [multimodal_inputs],
@@ -475,6 +490,7 @@ def run_train_step(output_dir: Path, learning_rate: float, steps: int) -> None:
                 prefill_keep_ratio=selection.prefill.keep_ratio,
                 prefill_selector=selection.prefill.selector,
                 prefill_selector_kwargs=record.get("prefill_selector_kwargs", {}),
+                prefill_prune_after_layer=prefill_prune_after_layer,
             ),
         )
     elif dynamic:
@@ -501,11 +517,11 @@ def run_train_step(output_dir: Path, learning_rate: float, steps: int) -> None:
             expected_selector_kwargs=record.get("selector_kwargs", {}),
         )
     compact_keep = student_attention_mask[0].bool()
-    if two_stage:
+    if two_stage and not delayed_prefill:
         dynamic_attention_mask = dynamic_attention_mask[:, compact_keep][:, :, compact_keep]
     student_input_ids = (
         full_input_ids
-        if layerwise and not two_stage
+        if layerwise and (not two_stage or delayed_prefill)
         else full_input_ids[:, compact_keep]
     )
 
@@ -520,7 +536,7 @@ def run_train_step(output_dir: Path, learning_rate: float, steps: int) -> None:
     teacher_position_ids = full_position_ids.unsqueeze(1)
     student_position_ids = (
         teacher_position_ids
-        if layerwise and not two_stage
+        if layerwise and (not two_stage or delayed_prefill)
         else full_position_ids[:, compact_keep].unsqueeze(1)
     )
 
@@ -552,7 +568,11 @@ def run_train_step(output_dir: Path, learning_rate: float, steps: int) -> None:
     keep_mask = multimodal_inputs.get(KEEP_MASK_KEY)
     if keep_mask is not None:
         keep_mask = keep_mask.cuda()
-    layerwise_attention_mask = student_attention_mask.cuda()
+    layerwise_attention_mask = (
+        stage_one_attention_mask.cuda()
+        if two_stage and delayed_prefill
+        else student_attention_mask.cuda()
+    )
     if dynamic_attention_mask is not None:
         dynamic_attention_mask = dynamic_attention_mask.cuda()
 
@@ -560,7 +580,7 @@ def run_train_step(output_dir: Path, learning_rate: float, steps: int) -> None:
     teacher_prompt_length = prompt_ids.shape[1]
     student_prompt_length = (
         teacher_prompt_length
-        if layerwise and not two_stage
+        if layerwise and (not two_stage or delayed_prefill)
         else int(student_attention_mask[:, :teacher_prompt_length].sum().item())
     )
     torch.cuda.empty_cache()
@@ -593,7 +613,14 @@ def run_train_step(output_dir: Path, learning_rate: float, steps: int) -> None:
             "vision_token_prune_after_layer": prune_after_layer,
         }
         if two_stage:
-            student_kwargs["vision_token_keep_mask"] = keep_mask
+            if delayed_prefill:
+                student_kwargs.update(
+                    vision_token_pruning_mask=layerwise_attention_mask,
+                    vision_token_prefill_prune_after_layer=prefill_prune_after_layer,
+                    vision_token_decode_prune_after_layer=prune_after_layer,
+                )
+            else:
+                student_kwargs["vision_token_keep_mask"] = keep_mask
     elif layerwise:
         student_kwargs = {
             "vision_token_pruning_mask": layerwise_attention_mask,
@@ -720,6 +747,7 @@ def main() -> None:
     parser.add_argument("--prefill-keep-ratio", type=float)
     parser.add_argument("--prefill-selector", default="embedding_norm")
     parser.add_argument("--prefill-selector-kwargs", type=json.loads, default={})
+    parser.add_argument("--prefill-prune-after-layer", type=int, default=-1)
     parser.add_argument("--prune-after-layer", type=int, default=-1)
     parser.add_argument("--layerwise-backend", choices=("flex", "compact_flash"), default="flex")
     parser.add_argument("--pre-pruning-backend", choices=("flex", "flash"), default="flex")
@@ -753,6 +781,7 @@ def main() -> None:
             args.prefill_keep_ratio,
             args.prefill_selector,
             args.prefill_selector_kwargs,
+            args.prefill_prune_after_layer,
             args.gpu_memory_utilization,
             args.warmup_runs,
             args.measure_runs,

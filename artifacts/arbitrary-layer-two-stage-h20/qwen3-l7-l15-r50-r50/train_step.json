@@ -1,0 +1,50 @@
+{
+  "generated_text": "From left to right",
+  "full_sequence_tokens": 92,
+  "student_sequence_tokens": 92,
+  "full_visual_tokens": 64,
+  "prefill_visual_tokens": 32,
+  "student_visual_tokens": [
+    16,
+    16,
+    16,
+    16
+  ],
+  "response_tokens": 4,
+  "prune_after_layer": 15,
+  "training_steps": 3,
+  "step_losses": [
+    4.9135607582684315e-08,
+    4.913094997505141e-08,
+    4.913093576419669e-08
+  ],
+  "step_raw_jsd": [
+    4.9135607582684315e-08,
+    4.913094997505141e-08,
+    4.913093576419669e-08
+  ],
+  "step_grad_norms": [
+    3.874301910400391e-06,
+    3.874301910400391e-06,
+    3.874301910400391e-06
+  ],
+  "step_latencies_s": [
+    0.31443799287080765,
+    0.06154000014066696,
+    0.05985905975103378
+  ],
+  "mean_train_step_s": 0.1452790175875028,
+  "train_stage_seconds_including_teacher_and_postcheck": 1.1136457026004791,
+  "cuda_baseline_allocated_mib": 8521.62451171875,
+  "cuda_baseline_reserved_mib": 8556.0,
+  "cuda_peak_allocated_mib": 8819.94775390625,
+  "cuda_peak_reserved_mib": 8908.0,
+  "loss_before": 4.9135607582684315e-08,
+  "loss_after": 4.9128352941352205e-08,
+  "raw_jsd_before": 4.9135607582684315e-08,
+  "raw_jsd_after": 4.9128352941352205e-08,
+  "grad_norm": 3.874301910400391e-06,
+  "parameter_delta_norm": 0.0021466438192874193,
+  "trainable_parameters": 10485760,
+  "attention_backend": "flash_attention_2"
+}

@@ -83,8 +83,6 @@ class PreparedActorPruningInputs:
             if dynamic_attention_mask is _USE_PREPARED_LAYERWISE_MASK
             else dynamic_attention_mask
         )
-        if mask is not None and dynamic_mask is not None:
-            raise ValueError("static and dynamic layerwise masks are mutually exclusive")
         if mask is None and dynamic_mask is None:
             return {}
         if not config.uses_layerwise_backend:
@@ -92,10 +90,19 @@ class PreparedActorPruningInputs:
         if dynamic_mask is not None:
             if not isinstance(dynamic_mask, torch.Tensor):
                 raise TypeError("dynamic layerwise attention mask must be a tensor or None")
-            return {
+            output = {
                 "vision_token_dynamic_attention_mask": dynamic_mask,
                 "vision_token_prune_after_layer": config.prune_after_layer,
             }
+            if mask is not None:
+                if not config.uses_delayed_prefill_pruning:
+                    raise ValueError("combined static/dynamic masks require delayed two-stage pruning")
+                if not isinstance(mask, torch.Tensor):
+                    raise TypeError("layerwise attention mask must be a tensor or None")
+                output["vision_token_pruning_mask"] = mask
+                output["vision_token_prefill_prune_after_layer"] = config.prefill_prune_after_layer
+                output["vision_token_decode_prune_after_layer"] = config.prune_after_layer
+            return output
         if not isinstance(mask, torch.Tensor):
             raise TypeError("layerwise attention mask must be a tensor or None")
         return {
@@ -129,7 +136,7 @@ def prepare_actor_pruning_inputs(
         raise ValueError("vision token pruning requires model.config.image_token_id")
 
     if config.uses_two_stage_pruning:
-        prefill_attention_mask, dynamic_attention_mask = replay_two_stage_rollout_selection(
+        prefill_attention_mask, layerwise_attention_mask, dynamic_attention_mask = replay_two_stage_rollout_selection(
             input_ids,
             attention_mask,
             per_sample_multi_modal_inputs,
@@ -139,9 +146,16 @@ def prepare_actor_pruning_inputs(
         return PreparedActorPruningInputs(
             attention_mask=prefill_attention_mask,
             per_sample_multi_modal_inputs=[
-                strip_selection_metadata(inputs) if inputs is not None else None
+                (
+                    strip_pruning_metadata(inputs)
+                    if config.uses_delayed_prefill_pruning
+                    else strip_selection_metadata(inputs)
+                )
+                if inputs is not None
+                else None
                 for inputs in per_sample_multi_modal_inputs
             ],
+            layerwise_attention_mask=layerwise_attention_mask,
             dynamic_layerwise_attention_mask=dynamic_attention_mask,
         )
 
@@ -254,8 +268,8 @@ def replay_two_stage_rollout_selection(
     *,
     image_token_id: int,
     config: VisionTokenPruningConfig,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """Replay physical prefill pruning and decode routing within that subset."""
+) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor]:
+    """Replay first-stage pruning and decode routing within that subset."""
 
     if not config.uses_two_stage_pruning or config.prefill_keep_ratio is None:
         raise ValueError("two-stage replay requires a two-stage pruning config")
@@ -269,7 +283,7 @@ def replay_two_stage_rollout_selection(
         config.prefill_selector_kwargs,
     )
     decode_fingerprint = compute_selector_fingerprint(config.selector, config.selector_kwargs)
-    prefill_attention = attention_mask.clone()
+    stage_one_attention = attention_mask.clone()
     batch_size, sequence_length = input_ids.shape
     dynamic_mask = torch.ones(
         (batch_size, sequence_length, sequence_length),
@@ -306,10 +320,20 @@ def replay_two_stage_rollout_selection(
                 f"visual tokens, but input contains {len(image_positions)}"
             )
         keep_on_device = keep_mask.to(image_positions.device)
-        prefill_attention[sample_index, image_positions[~keep_on_device]] = 0
+        stage_one_attention[sample_index, image_positions[~keep_on_device]] = 0
         retained_image_positions = image_positions[keep_on_device]
 
-        valid_positions = prefill_attention[sample_index].bool().nonzero(as_tuple=False).flatten()
+        # The dynamic stage is relative to the first-stage subset. In delayed
+        # mode the dropped entries still physically exist, so every query must
+        # continue masking them after the decode boundary as well.
+        dynamic_mask[sample_index, :, image_positions[~keep_on_device]] = False
+
+        routing_attention = (
+            stage_one_attention[sample_index]
+            if config.uses_physical_prefill_pruning
+            else attention_mask[sample_index]
+        )
+        valid_positions = routing_attention.bool().nonzero(as_tuple=False).flatten()
         if len(decode.query_kept_visual_indices) > len(valid_positions):
             raise ValueError(f"sample {sample_index} has more decode routes than compact sequence tokens")
         for relative_query, selected_indices in enumerate(decode.query_kept_visual_indices):
@@ -327,7 +351,9 @@ def replay_two_stage_rollout_selection(
                 query_position,
                 retained_image_positions.index_select(0, selected),
             ] = True
-    return prefill_attention, dynamic_mask
+    if config.uses_physical_prefill_pruning:
+        return stage_one_attention, None, dynamic_mask
+    return attention_mask, stage_one_attention, dynamic_mask
 
 
 def replay_dynamic_rollout_selection(

@@ -64,6 +64,8 @@ actor_rollout_ref:
 
       prefill_selector_kwargs: {}
 
+      prefill_prune_after_layer: -1
+
       prune_after_layer: 15
 
       layerwise_backend: flex

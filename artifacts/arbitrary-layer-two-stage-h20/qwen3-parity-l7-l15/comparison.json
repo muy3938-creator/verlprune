@@ -1,0 +1,60 @@
+{
+  "case": {
+    "keep_ratio": 0.5,
+    "prune_after_layer": 15,
+    "batch_size": 1,
+    "response_length": 8,
+    "selector": "vision_pulse",
+    "selector_input": "decode_query",
+    "selector_kwargs": {
+      "budget_mode": "fixed",
+      "temperature": 0.1,
+      "capture_capacity": 64
+    },
+    "pre_pruning_backend": "flex",
+    "temperature": 1.0,
+    "prefill_keep_ratio": 0.5,
+    "prefill_selector": "embedding_norm",
+    "prefill_prune_after_layer": 7,
+    "pruning_enabled": true,
+    "plugin_no_prune": false
+  },
+  "metrics": {
+    "token_count": 8,
+    "response_length": 8,
+    "response_length_min": 8,
+    "response_length_max": 8,
+    "sampled_logprob_signed_diff_mean": -0.0002568454618767646,
+    "sampled_logprob_abs_diff_mean": 0.00025866188286727265,
+    "sampled_logprob_abs_diff_p50": 0.0,
+    "sampled_logprob_abs_diff_p95": 0.0020578568801283836,
+    "sampled_logprob_abs_diff_p99": 0.0020578568801283836,
+    "sampled_logprob_abs_diff_max": 0.0020578568801283836,
+    "prefill_token_abs_diff_mean": 0.0020578568801283836,
+    "decode_token_abs_diff_mean": 1.6340261156853688e-06,
+    "probability_abs_diff_mean": 0.0002575805214755089,
+    "probability_abs_diff_max": 0.0020492068229728266,
+    "probability_pearson": 0.9998929070788254,
+    "direct_kl_sample_estimate": 0.0002568454618767646,
+    "k3_kl_sample_estimate": 2.6449582116172543e-07,
+    "token_importance_ratio_mean": 0.9997434190339444,
+    "token_importance_ratio_min": 0.9979442590556613,
+    "token_importance_ratio_max": 1.0000072657103571,
+    "fraction_ratio_outside_0_9_1_1": 0.0,
+    "fraction_ratio_outside_0_8_1_2": 0.0,
+    "sequence_log_ratio_abs_mean": 0.002054763695014117,
+    "sequence_log_ratio_abs_max": 0.002054763695014117,
+    "fraction_abs_diff_gt_0_05": 0.0,
+    "fraction_abs_diff_gt_0_10": 0.0,
+    "per_position_abs_diff_mean": [
+      0.0020578568801283836,
+      0.0,
+      0.0,
+      0.0,
+      2.2650610844721086e-06,
+      7.265683962032199e-06,
+      1.9074377632932737e-06,
+      0.0
+    ]
+  }
+}

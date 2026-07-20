@@ -8,6 +8,12 @@ from typing import Any
 from .config import VisionTokenPruningConfig
 
 
+# vLLM's Qwen EVS postprocessing hook is skipped when video_pruning_rate is
+# exactly zero. Delayed pruning needs that hook only to attach selection
+# metadata, while its processor and model preserve every visual token.
+DELAYED_PREFILL_METADATA_PRUNING_RATE = 1e-9
+
+
 @dataclass(frozen=True)
 class VllmPruningLaunchOptions:
     hf_overrides: dict[str, Any]
@@ -83,7 +89,13 @@ def build_vllm_pruning_launch_options(
 
     backend = resolve_vllm_backend(config)
     physical_keep_ratio = (
-        config.prefill_keep_ratio if config.uses_two_stage_pruning else config.keep_ratio
+        config.prefill_keep_ratio
+        if config.uses_physical_prefill_pruning
+        else (
+            1.0 - DELAYED_PREFILL_METADATA_PRUNING_RATE
+            if config.uses_delayed_prefill_pruning
+            else config.keep_ratio
+        )
     )
     assert physical_keep_ratio is not None
     cli_args: dict[str, Any] = {

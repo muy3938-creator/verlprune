@@ -70,6 +70,10 @@ class VisionTokenPruningConfig:
     prefill_keep_ratio: float | None = None
     prefill_selector: str = "embedding_norm"
     prefill_selector_kwargs: dict[str, Any] = field(default_factory=dict)
+    # -1 physically compacts before decoder layer 0. A non-negative value
+    # keeps the complete paged KV cache and applies the first-stage subset as
+    # a static FlexAttention mask after that decoder layer.
+    prefill_prune_after_layer: int = -1
 
     def __post_init__(self) -> None:
         if not self.selector or not self.selector.strip():
@@ -89,6 +93,12 @@ class VisionTokenPruningConfig:
                 raise ValueError("prefill_selector must be a non-empty name")
         if self.prune_after_layer < -1:
             raise ValueError("vision token pruning prune_after_layer must be >= -1")
+        if self.prefill_prune_after_layer < -1:
+            raise ValueError("prefill_prune_after_layer must be >= -1")
+        if self.prefill_keep_ratio is None and self.prefill_prune_after_layer != -1:
+            raise ValueError(
+                "prefill_prune_after_layer requires prefill_keep_ratio to enable two-stage pruning"
+            )
         if self.layerwise_backend not in {"flex", "compact_flash"}:
             raise ValueError("vision token pruning layerwise_backend must be 'flex' or 'compact_flash'")
         if self.pre_pruning_backend not in {"flex", "flash"}:
@@ -122,6 +132,10 @@ class VisionTokenPruningConfig:
                 raise ValueError(
                     "two-stage pruning requires selector_input='decode_query' "
                     "and selector='vision_pulse'"
+                )
+            if self.prefill_prune_after_layer > self.prune_after_layer:
+                raise ValueError(
+                    "two-stage pruning requires prefill_prune_after_layer <= prune_after_layer"
                 )
             if self.prefill_selector in {"vision_pulse", "dart", "greedy_prune", "key_norm"}:
                 raise ValueError(
@@ -207,11 +221,21 @@ class VisionTokenPruningConfig:
         return self.enabled and self.prefill_keep_ratio is not None
 
     @property
+    def uses_physical_prefill_pruning(self) -> bool:
+        return self.uses_two_stage_pruning and self.prefill_prune_after_layer == -1
+
+    @property
+    def uses_delayed_prefill_pruning(self) -> bool:
+        return self.uses_two_stage_pruning and self.prefill_prune_after_layer >= 0
+
+    @property
     def backend_name(self) -> str:
         if not self.uses_layerwise_backend:
             return "prefill_physical_shared_kv"
         if self.uses_two_stage_pruning:
-            return "prefill_physical_then_dynamic_decode_flex"
+            if self.uses_physical_prefill_pruning:
+                return "prefill_physical_then_dynamic_decode_flex"
+            return "prefill_mask_then_dynamic_decode_flex"
         return f"layerwise_{self.layerwise_backend}"
 
     @property
@@ -239,6 +263,7 @@ class VisionTokenPruningConfig:
             payload["prefill_keep_ratio"] = self.prefill_keep_ratio
             payload["prefill_selector"] = self.prefill_selector
             payload["prefill_selector_kwargs"] = dict(self.prefill_selector_kwargs)
+            payload["prefill_prune_after_layer"] = self.prefill_prune_after_layer
         return payload
 
 

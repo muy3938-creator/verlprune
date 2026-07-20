@@ -1,0 +1,57 @@
+{
+  "model_path": "/workspace/ckpts/Qwen3-VL-4B-Instruct",
+  "image_path": "/workspace/outputs/qwen3-greedy-l27-r10/shapes.png",
+  "prompt": "<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>Describe the two colored shapes from left to right in one short sentence.<|im_end|>\n<|im_start|>assistant\n",
+  "generated_token_ids": [
+    3830,
+    2115
+  ],
+  "generated_text": "From left",
+  "selection": {
+    "version": 3,
+    "keep_ratio": 0.1,
+    "selector": "greedy_prune",
+    "selector_fingerprint": "28e25caf8d43d2d1fb932b4c1c93663798ddeda3753c4af800b3bf295dbe2cc1",
+    "original_visual_token_count": 64,
+    "kept_visual_indices": [
+      4,
+      24,
+      32,
+      50,
+      60,
+      63
+    ]
+  },
+  "image_grid_thw": [
+    1,
+    16,
+    16
+  ],
+  "prune_after_layer": 27,
+  "selector": "greedy_prune",
+  "selector_kwargs": {
+    "similarity_threshold": 0.9
+  },
+  "rollout_batch_size": 1,
+  "layerwise_backend": "flex",
+  "pre_pruning_backend": "flex",
+  "selector_input": "decoder_key",
+  "prefill_keep_ratio": null,
+  "prefill_selector": "embedding_norm",
+  "prefill_selector_kwargs": {},
+  "prefill_prune_after_layer": -1,
+  "rollout_seconds": 4.119095873087645,
+  "rollout_latencies": [
+    4.119095873087645
+  ],
+  "median_rollout_seconds": 4.119095873087645,
+  "warmup_runs": 0,
+  "measure_runs": 1,
+  "fixed_output_tokens": false,
+  "resolution": 224,
+  "decode_tokens": 2,
+  "output_tokens_per_second": 0.4855434448775805,
+  "gpu_memory_baseline_mib": 74076,
+  "gpu_memory_peak_mib": 74084,
+  "gpu_memory_delta_mib": 8
+}

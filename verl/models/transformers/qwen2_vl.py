@@ -294,18 +294,24 @@ def qwen2_vl_attn_forward(
     layerwise_pruning_mask = kwargs.pop("vision_token_pruning_mask", None)
     dynamic_attention_mask = kwargs.pop("vision_token_dynamic_attention_mask", None)
     prune_after_layer = kwargs.pop("vision_token_prune_after_layer", None)
+    prefill_prune_after_layer = kwargs.pop(
+        "vision_token_prefill_prune_after_layer",
+        prune_after_layer,
+    )
+    decode_prune_after_layer = kwargs.pop(
+        "vision_token_decode_prune_after_layer",
+        prune_after_layer,
+    )
     apply_layerwise_pruning = (
         layerwise_pruning_mask is not None
-        and prune_after_layer is not None
-        and self.layer_idx > int(prune_after_layer)
+        and prefill_prune_after_layer is not None
+        and self.layer_idx > int(prefill_prune_after_layer)
     )
     apply_dynamic_pruning = (
         dynamic_attention_mask is not None
-        and prune_after_layer is not None
-        and self.layer_idx > int(prune_after_layer)
+        and decode_prune_after_layer is not None
+        and self.layer_idx > int(decode_prune_after_layer)
     )
-    if layerwise_pruning_mask is not None and dynamic_attention_mask is not None:
-        raise ValueError("static and dynamic vision-token pruning masks are mutually exclusive")
     query_states = self.q_proj(hidden_states)  # (batch_size, seq_length / sp_size, num_heads * head_size)
     key_states = self.k_proj(hidden_states)
     value_states = self.v_proj(hidden_states)
@@ -316,8 +322,9 @@ def qwen2_vl_attn_forward(
 
     # Because the input can be padded, the absolute sequence length depends on the max position id.
     cos, sin = position_embeddings
+    rope_scaling = getattr(self, "rope_scaling", self.config.rope_scaling)
     query_states, key_states = apply_multimodal_rotary_pos_emb(
-        query_states, key_states, cos, sin, self.rope_scaling["mrope_section"]
+        query_states, key_states, cos, sin, rope_scaling["mrope_section"]
     )
     key_states = repeat_kv(key_states, self.num_key_value_groups)
     value_states = repeat_kv(value_states, self.num_key_value_groups)
@@ -343,7 +350,10 @@ def qwen2_vl_attn_forward(
         position_ids = position_ids[0]
 
     retained_indices = None
-    if apply_layerwise_pruning and attention_mask is None:
+    static_keep_mask = None
+    if apply_layerwise_pruning:
+        static_keep_mask = layerwise_pruning_mask.to(device=query_states.device, dtype=torch.bool)
+    if apply_layerwise_pruning and not apply_dynamic_pruning and attention_mask is None:
         if bsz != 1 or layerwise_pruning_mask.numel() != q_len:
             raise ValueError("packed layerwise pruning expects a single flattened sequence")
         flat_keep_mask = layerwise_pruning_mask.reshape(-1).to(device=query_states.device, dtype=torch.bool)
@@ -353,7 +363,7 @@ def qwen2_vl_attn_forward(
         value_states = value_states.index_select(1, retained_indices)
         position_ids = position_ids.index_select(-1, retained_indices)
         q_len = retained_indices.numel()
-    elif apply_layerwise_pruning:
+    elif apply_layerwise_pruning and not apply_dynamic_pruning:
         if layerwise_pruning_mask.shape != attention_mask.shape:
             raise ValueError("layerwise pruning mask must match the padded attention mask")
         attention_mask = attention_mask * layerwise_pruning_mask.to(attention_mask.device)
@@ -365,6 +375,8 @@ def qwen2_vl_attn_forward(
                 f"[{bsz}, {q_len}, {q_len}]"
             )
         allowed = dynamic_attention_mask.to(device=query_states.device, dtype=torch.bool)
+        if static_keep_mask is not None:
+            allowed = allowed & static_keep_mask[:, None, :]
         if getattr(self, "is_causal", True):
             allowed = allowed & torch.ones(
                 (q_len, q_len),
@@ -401,6 +413,8 @@ def qwen2_vl_attn_forward(
         compact_output = attn_output
         attn_output = compact_output.new_zeros((bsz, hidden_states.shape[1], *compact_output.shape[2:]))
         attn_output.index_copy_(1, retained_indices, compact_output)
+    elif apply_layerwise_pruning and static_keep_mask is not None:
+        attn_output.masked_fill_(~static_keep_mask[:, :, None, None], 0)
     attn_output = attn_output.reshape(bsz, hidden_states.shape[1], self.hidden_size).contiguous()
     attn_output = self.o_proj(attn_output)
     if is_transformers_version_in_range(min_version="4.54.0"):
