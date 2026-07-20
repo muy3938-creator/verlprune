@@ -13,7 +13,7 @@ from typing import Any
 import torch
 
 from .config import compute_selector_fingerprint
-from .protocol import DynamicVisionTokenSelection, VisionTokenSelection
+from .protocol import DynamicVisionTokenSelection, TwoStageVisionTokenSelection, VisionTokenSelection
 
 EMBEDDING_METADATA_RADIX = 256
 
@@ -117,3 +117,62 @@ def decode_vllm_dynamic_selection_capture(
         original_visual_token_count=original_visual_token_count,
         query_kept_visual_indices=tuple(query_rows),
     )
+
+
+def decode_vllm_two_stage_selection_capture(
+    capture: Any,
+    *,
+    prefill_keep_ratio: float,
+    prefill_selector: str,
+    prefill_selector_kwargs: Mapping[str, Any] | None,
+    decode_keep_ratio: float,
+    decode_selector: str,
+    decode_selector_kwargs: Mapping[str, Any] | None,
+) -> TwoStageVisionTokenSelection:
+    """Decode physical-prefill metadata and dynamic routes from one channel.
+
+    Layer-zero capture rows whose final capacity slot is one describe a
+    physically retained visual token: slot zero stores its one-based original
+    index and slot one stores the original visual-token count. Other rows are
+    ordinary per-query dynamic selections relative to the retained subset.
+    """
+
+    values = capture.tolist() if hasattr(capture, "tolist") else capture
+    if values is None:
+        raise ValueError("vLLM two-stage pruning did not return selection metadata")
+    prefill_indices: list[int] = []
+    original_counts: set[int] = set()
+    query_rows: list[tuple[int, ...]] = []
+    try:
+        for token_layers in values:
+            row = [int(value) for value in token_layers[0]]
+            if len(row) < 3:
+                raise ValueError("two-stage selection capture requires capacity >= 3")
+            if row[-1] > 0:
+                if row[0] <= 0 or row[1] <= 0:
+                    raise ValueError("invalid two-stage prefill metadata row")
+                prefill_indices.append(row[0] - 1)
+                original_counts.add(row[1])
+                query_rows.append(())
+            else:
+                query_rows.append(tuple(sorted({value - 1 for value in row[:-1] if value > 0})))
+    except (IndexError, TypeError) as exc:
+        raise ValueError("invalid vLLM two-stage selection capture shape") from exc
+    if len(original_counts) != 1:
+        raise ValueError("two-stage capture has missing or inconsistent original token counts")
+    original_count = next(iter(original_counts))
+    prefill = VisionTokenSelection(
+        keep_ratio=prefill_keep_ratio,
+        selector=prefill_selector,
+        selector_fingerprint=compute_selector_fingerprint(prefill_selector, prefill_selector_kwargs),
+        original_visual_token_count=original_count,
+        kept_visual_indices=tuple(sorted(set(prefill_indices))),
+    )
+    decode = DynamicVisionTokenSelection(
+        nominal_keep_ratio=decode_keep_ratio,
+        selector=decode_selector,
+        selector_fingerprint=compute_selector_fingerprint(decode_selector, decode_selector_kwargs),
+        original_visual_token_count=len(prefill.kept_visual_indices),
+        query_kept_visual_indices=tuple(query_rows),
+    )
+    return TwoStageVisionTokenSelection(prefill=prefill, decode=decode)

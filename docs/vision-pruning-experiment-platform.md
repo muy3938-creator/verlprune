@@ -142,8 +142,9 @@ wrapper around this entry point.
 ## Constraints and risk containment
 
 - Exactly one image and no video are supported per pruned rollout.
-- Physical mode supports Qwen2.5-VL and Qwen3-VL; layerwise mode currently
-  supports only Qwen2.5-VL.
+- Physical mode supports Qwen2.5-VL and Qwen3-VL. The two-stage physical
+  prefill plus dynamic Flex decode mode has real rollout/training validation
+  on both Qwen2.5-VL-3B and dense Qwen3-VL-4B.
 - Exact selection capture currently requires eager vLLM for both backends:
   compiled graph replay does not re-enter the Python metadata hook. Layerwise
   mode additionally disables chunked prefill and prefix caching.

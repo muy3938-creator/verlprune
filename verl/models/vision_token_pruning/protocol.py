@@ -7,6 +7,8 @@ from .config import compute_selector_fingerprint
 SELECTION_PROTOCOL_VERSION = 3
 DYNAMIC_SELECTION_PROTOCOL_VERSION = 1
 DYNAMIC_SELECTION_KIND = "decode_dynamic"
+TWO_STAGE_SELECTION_PROTOCOL_VERSION = 1
+TWO_STAGE_SELECTION_KIND = "prefill_physical_decode_dynamic"
 
 
 def compute_keep_count(token_count: int, keep_ratio: float) -> int:
@@ -195,9 +197,59 @@ class DynamicVisionTokenSelection:
         )
 
 
+@dataclass(frozen=True)
+class TwoStageVisionTokenSelection:
+    """Physical prefill selection plus per-query routing within that subset."""
+
+    prefill: VisionTokenSelection
+    decode: DynamicVisionTokenSelection
+    kind: str = TWO_STAGE_SELECTION_KIND
+    version: int = TWO_STAGE_SELECTION_PROTOCOL_VERSION
+
+    def __post_init__(self) -> None:
+        if self.kind != TWO_STAGE_SELECTION_KIND:
+            raise ValueError(f"unsupported two-stage selection kind {self.kind!r}")
+        if self.version != TWO_STAGE_SELECTION_PROTOCOL_VERSION:
+            raise ValueError(
+                f"unsupported two-stage selection version {self.version}; "
+                f"expected {TWO_STAGE_SELECTION_PROTOCOL_VERSION}"
+            )
+        if self.decode.original_visual_token_count != len(self.prefill.kept_visual_indices):
+            raise ValueError(
+                "two-stage decode indices must be relative to the physically retained prefill subset"
+            )
+
+    @property
+    def effective_nominal_keep_ratio(self) -> float:
+        return self.prefill.keep_ratio * self.decode.nominal_keep_ratio
+
+    def to_wire(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind,
+            "version": self.version,
+            "prefill": self.prefill.to_wire(),
+            "decode": self.decode.to_wire(),
+        }
+
+    @classmethod
+    def from_wire(cls, value: dict[str, Any]) -> "TwoStageVisionTokenSelection":
+        required = {"kind", "version", "prefill", "decode"}
+        missing = required.difference(value)
+        if missing:
+            raise ValueError(f"two-stage visual selection is missing fields: {sorted(missing)}")
+        return cls(
+            kind=str(value["kind"]),
+            version=int(value["version"]),
+            prefill=VisionTokenSelection.from_wire(dict(value["prefill"])),
+            decode=DynamicVisionTokenSelection.from_wire(dict(value["decode"])),
+        )
+
+
 def selection_from_wire(
     value: dict[str, Any],
-) -> VisionTokenSelection | DynamicVisionTokenSelection:
+) -> VisionTokenSelection | DynamicVisionTokenSelection | TwoStageVisionTokenSelection:
+    if value.get("kind") == TWO_STAGE_SELECTION_KIND:
+        return TwoStageVisionTokenSelection.from_wire(value)
     if value.get("kind") == DYNAMIC_SELECTION_KIND:
         return DynamicVisionTokenSelection.from_wire(value)
     return VisionTokenSelection.from_wire(value)

@@ -64,16 +64,29 @@ class VisionTokenPruningConfig:
     selector_input: str = "vision_embedding"
     selector: str = "embedding_norm"
     selector_kwargs: dict[str, Any] = field(default_factory=dict)
+    # Optional first-stage physical pruning. When set together with
+    # decode_query/VisionPulse, ``keep_ratio`` is relative to this retained
+    # subset rather than to the original visual-token count.
+    prefill_keep_ratio: float | None = None
+    prefill_selector: str = "embedding_norm"
+    prefill_selector_kwargs: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.selector or not self.selector.strip():
             raise ValueError("vision token pruning selector must be a non-empty name")
         self.selector = self.selector.strip()
         self.selector_kwargs = dict(self.selector_kwargs)
+        self.prefill_selector = self.prefill_selector.strip()
+        self.prefill_selector_kwargs = dict(self.prefill_selector_kwargs)
         if not 0.0 < self.keep_ratio <= 1.0:
             raise ValueError(f"vision token pruning keep_ratio must be in (0, 1], got {self.keep_ratio}")
         if self.enabled and self.keep_ratio == 1.0:
             raise ValueError("enabled vision token pruning requires keep_ratio < 1")
+        if self.prefill_keep_ratio is not None:
+            if not 0.0 < self.prefill_keep_ratio < 1.0:
+                raise ValueError("prefill_keep_ratio must be in (0, 1)")
+            if not self.prefill_selector:
+                raise ValueError("prefill_selector must be a non-empty name")
         if self.prune_after_layer < -1:
             raise ValueError("vision token pruning prune_after_layer must be >= -1")
         if self.layerwise_backend not in {"flex", "compact_flash"}:
@@ -100,6 +113,20 @@ class VisionTokenPruningConfig:
             raise ValueError("decode_query selection currently requires selector='vision_pulse'")
         if self.selector == "vision_pulse" and self.selector_input != "decode_query":
             raise ValueError("selector='vision_pulse' requires selector_input='decode_query'")
+        if self.prefill_keep_ratio is not None:
+            if self.prune_after_layer < 0:
+                raise ValueError("two-stage pruning requires prune_after_layer >= 0")
+            if self.layerwise_backend != "flex":
+                raise ValueError("two-stage pruning requires layerwise_backend='flex'")
+            if self.selector_input != "decode_query" or self.selector != "vision_pulse":
+                raise ValueError(
+                    "two-stage pruning requires selector_input='decode_query' "
+                    "and selector='vision_pulse'"
+                )
+            if self.prefill_selector in {"vision_pulse", "dart", "greedy_prune", "key_norm"}:
+                raise ValueError(
+                    f"prefill_selector={self.prefill_selector!r} cannot select from vision embeddings"
+                )
         if self.selector in {"dart", "greedy_prune"} and self.selector_input != "decoder_key":
             raise ValueError(
                 f"selector={self.selector!r} requires selector_input='decoder_key'"
@@ -165,6 +192,7 @@ class VisionTokenPruningConfig:
                 f"unsupported divprune selector_kwargs: {sorted(self.selector_kwargs)}"
             )
         compute_selector_fingerprint(self.selector, self.selector_kwargs)
+        compute_selector_fingerprint(self.prefill_selector, self.prefill_selector_kwargs)
 
     @property
     def uses_layerwise_backend(self) -> bool:
@@ -175,9 +203,15 @@ class VisionTokenPruningConfig:
         return self.uses_layerwise_backend and self.selector_input == "decode_query"
 
     @property
+    def uses_two_stage_pruning(self) -> bool:
+        return self.enabled and self.prefill_keep_ratio is not None
+
+    @property
     def backend_name(self) -> str:
         if not self.uses_layerwise_backend:
             return "prefill_physical_shared_kv"
+        if self.uses_two_stage_pruning:
+            return "prefill_physical_then_dynamic_decode_flex"
         return f"layerwise_{self.layerwise_backend}"
 
     @property
@@ -201,6 +235,10 @@ class VisionTokenPruningConfig:
             payload["layerwise_backend"] = self.layerwise_backend
             payload["pre_pruning_backend"] = self.pre_pruning_backend
             payload["selector_input"] = self.selector_input
+        if self.uses_two_stage_pruning:
+            payload["prefill_keep_ratio"] = self.prefill_keep_ratio
+            payload["prefill_selector"] = self.prefill_selector
+            payload["prefill_selector_kwargs"] = dict(self.prefill_selector_kwargs)
         return payload
 
 

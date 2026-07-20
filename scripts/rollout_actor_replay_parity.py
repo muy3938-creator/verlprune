@@ -68,6 +68,9 @@ def run_rollout(
     gpu_memory_utilization: float,
     baseline_unpruned: bool,
     plugin_no_prune: bool,
+    prefill_keep_ratio: float | None,
+    prefill_selector: str,
+    prefill_selector_kwargs: dict,
 ) -> None:
     os.environ.setdefault("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
     os.environ.setdefault("VLLM_PLUGINS", "vision_opd_token_pruning")
@@ -79,6 +82,7 @@ def run_rollout(
     from verl.models.vision_token_pruning.transport import (
         decode_vllm_dynamic_selection_capture,
         decode_vllm_selection_capture,
+        decode_vllm_two_stage_selection_capture,
     )
 
     if temperature <= 0:
@@ -111,6 +115,9 @@ def run_rollout(
             selector=selector,
             selector_kwargs=selector_kwargs,
             selector_input=selector_input,
+            prefill_keep_ratio=prefill_keep_ratio,
+            prefill_selector=prefill_selector,
+            prefill_selector_kwargs=prefill_selector_kwargs,
         )
     )
     processed = processor(text=[prompt], images=[images[0]], return_tensors="pt")
@@ -148,7 +155,7 @@ def run_rollout(
         }
         llm_kwargs.update(
             enable_return_routed_experts=True,
-            video_pruning_rate=1.0 - effective_keep_ratio,
+            video_pruning_rate=1.0 - (prefill_keep_ratio or effective_keep_ratio),
             enable_chunked_prefill=not layerwise,
             hf_overrides={
                 "architectures": [
@@ -200,6 +207,17 @@ def run_rollout(
             raise RuntimeError(f"request {index} generated {len(token_ids)} tokens; expected {response_length}")
         if baseline_unpruned:
             selection_wire = None
+        elif prefill_keep_ratio is not None:
+            selection = decode_vllm_two_stage_selection_capture(
+                generated.routed_experts,
+                prefill_keep_ratio=prefill_keep_ratio,
+                prefill_selector=prefill_selector,
+                prefill_selector_kwargs=prefill_selector_kwargs,
+                decode_keep_ratio=effective_keep_ratio,
+                decode_selector=selector,
+                decode_selector_kwargs=selector_kwargs,
+            )
+            selection_wire = selection.to_wire()
         elif selector_input == "decode_query":
             selection = decode_vllm_dynamic_selection_capture(
                 generated.routed_experts,
@@ -250,6 +268,9 @@ def run_rollout(
         "selector_input": selector_input,
         "selector_kwargs": selector_kwargs,
         "pre_pruning_backend": pre_pruning_backend,
+        "prefill_keep_ratio": prefill_keep_ratio,
+        "prefill_selector": prefill_selector,
+        "prefill_selector_kwargs": prefill_selector_kwargs,
         "temperature": temperature,
         "seed": seed,
         "samples": samples,
@@ -382,6 +403,9 @@ def run_actor(case_dirs: list[Path]) -> None:
                 selector=str(reference["selector"]),
                 selector_input=str(reference["selector_input"]),
                 selector_kwargs=dict(reference["selector_kwargs"]),
+                prefill_keep_ratio=reference.get("prefill_keep_ratio"),
+                prefill_selector=str(reference.get("prefill_selector", "embedding_norm")),
+                prefill_selector_kwargs=dict(reference.get("prefill_selector_kwargs", {})),
             )
         )
         with patch("torch.distributed.get_rank", return_value=0):
@@ -528,6 +552,8 @@ def summarize_case(case_dir: Path) -> dict:
                     "temperature",
                 )
             },
+            "prefill_keep_ratio": rollout.get("prefill_keep_ratio"),
+            "prefill_selector": rollout.get("prefill_selector"),
             "pruning_enabled": rollout.get("pruning_enabled", True),
             "plugin_no_prune": rollout.get("plugin_no_prune", False),
         },
@@ -747,6 +773,9 @@ def main() -> None:
         default="vision_embedding",
     )
     parser.add_argument("--selector-kwargs", type=json.loads, default={})
+    parser.add_argument("--prefill-keep-ratio", type=float)
+    parser.add_argument("--prefill-selector", default="embedding_norm")
+    parser.add_argument("--prefill-selector-kwargs", type=json.loads, default={})
     parser.add_argument("--pre-pruning-backend", choices=("flex", "flash"), default="flash")
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=1234)
@@ -772,6 +801,9 @@ def main() -> None:
             gpu_memory_utilization=args.gpu_memory_utilization,
             baseline_unpruned=args.baseline_unpruned,
             plugin_no_prune=args.plugin_no_prune,
+            prefill_keep_ratio=args.prefill_keep_ratio,
+            prefill_selector=args.prefill_selector,
+            prefill_selector_kwargs=args.prefill_selector_kwargs,
         )
         return
 

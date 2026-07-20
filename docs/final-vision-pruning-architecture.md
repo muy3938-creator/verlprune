@@ -204,9 +204,9 @@ backend hook, but they can keep the same selection protocol and actor replay.
   Treat layerwise mode as research-only until a stable backend API exists.
 - **Metadata transport conflict:** selection currently uses the routed-expert
   return channel and cannot run with rollout routing replay.
-- **Model coverage:** the default layer-0 physical mode is validated on both
-  Qwen2.5-VL-3B and dense Qwen3-VL-4B. Qwen3 layerwise support remains
-  experimental; the Qwen3 result reported here is the simpler physical mode.
+- **Model coverage:** layer-0 physical mode and the fused physical-prefill plus
+  dynamic Flex-decode mode are validated on both Qwen2.5-VL-3B and dense
+  Qwen3-VL-4B. Other Qwen3 layerwise selectors remain experimental.
 - **FSDP CPU offload on the CNB image:** asynchronous parameter offload raised
   a CUDA invalid-argument error before pruning execution. Disable actor/ref
   parameter and optimizer offload on that image.

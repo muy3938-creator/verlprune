@@ -1,0 +1,71 @@
+{
+  "environment": {
+    "gpu": "NVIDIA H20",
+    "torch": "2.10.0+cu129",
+    "transformers": "4.57.6",
+    "vllm": "0.18.0"
+  },
+  "configuration": {
+    "prefill_keep_ratio": 0.5,
+    "prefill_selector": "embedding_norm",
+    "decode_keep_ratio_relative_to_prefill": 0.5,
+    "decode_selector": "vision_pulse",
+    "decode_anchor_layer": 15,
+    "effective_nominal_original_ratio": 0.25
+  },
+  "qwen2_5_vl_3b": {
+    "rollout": {
+      "original_visual_tokens": 64,
+      "prefill_cached_visual_tokens": 32,
+      "decode_visual_tokens_per_query": [16, 16, 16, 16, 16, 16, 16, 16],
+      "batch_sizes_passed": [1, 2],
+      "status": "PASS"
+    },
+    "actor_train": {
+      "steps": 3,
+      "losses": [0.013215212151408195, 0.0129155982285738, 0.013804101385176182],
+      "gradient_norms": [0.051025390625, 0.05078125, 0.053466796875],
+      "parameter_delta_norm": 0.02594129368662834,
+      "cuda_peak_allocated_mib": 7471.43798828125,
+      "status": "PASS"
+    },
+    "rollout_actor_parity": {
+      "sampled_logprob_abs_diff_mean": 0.016081966692581773,
+      "sampled_logprob_abs_diff_max": 0.0490570068359375,
+      "probability_pearson": 0.999530644376285,
+      "fraction_ratio_outside_0_9_1_1": 0.0,
+      "fraction_abs_diff_gt_0_05": 0.0,
+      "status": "PASS"
+    }
+  },
+  "qwen3_vl_4b_dense": {
+    "rollout": {
+      "original_visual_tokens": 64,
+      "prefill_cached_visual_tokens": 32,
+      "decode_visual_tokens_per_query": [16, 16, 16, 16, 16, 16, 16, 16],
+      "status": "PASS"
+    },
+    "actor_train": {
+      "steps": 3,
+      "losses": [0.0002829518634825945, 0.00011340879427734762, 0.000027008220058633015],
+      "gradient_norms": [0.022216796875, 0.0125732421875, 0.00531005859375],
+      "parameter_delta_norm": 0.04306969419121742,
+      "cuda_peak_allocated_mib": 8813.166015625,
+      "status": "PASS"
+    }
+  },
+  "performance_qwen2_5_vl_3b_batch1_decode32": {
+    "physical_prefill_only": {
+      "median_seconds": 1.0985986036248505,
+      "output_tokens_per_second": 29.12801808996961
+    },
+    "dynamic_decode_only": {
+      "median_seconds": 3.6414032368920743,
+      "output_tokens_per_second": 8.78782104541432
+    },
+    "two_stage_fused": {
+      "median_seconds": 5.0783942877314985,
+      "output_tokens_per_second": 6.301204315172285
+    }
+  }
+}

@@ -82,8 +82,12 @@ def build_vllm_pruning_launch_options(
         raise ValueError("vision token pruning cannot share routed_experts with rollout routing replay")
 
     backend = resolve_vllm_backend(config)
+    physical_keep_ratio = (
+        config.prefill_keep_ratio if config.uses_two_stage_pruning else config.keep_ratio
+    )
+    assert physical_keep_ratio is not None
     cli_args: dict[str, Any] = {
-        "video_pruning_rate": 1.0 - config.keep_ratio,
+        "video_pruning_rate": 1.0 - physical_keep_ratio,
         "limit_mm_per_prompt": {"image": 1, "video": 0},
         "enable_return_routed_experts": True,
     }
@@ -100,6 +104,8 @@ def build_vllm_pruning_launch_options(
         capture_capacity = int(config.selector_kwargs.get("capture_capacity", 64))
         if capture_capacity <= 0:
             raise ValueError("dynamic visual selection capture_capacity must be positive")
+        if config.uses_two_stage_pruning and capture_capacity < 3:
+            raise ValueError("two-stage selection capture_capacity must be at least 3")
     return VllmPruningLaunchOptions(
         hf_overrides={
             "architectures": [backend.architecture_for(model_type)],

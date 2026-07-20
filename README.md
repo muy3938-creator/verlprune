@@ -161,6 +161,19 @@ The dense Qwen3-VL-4B layer-0 rollout, actor parity, and three-step training
 results are recorded in
 `docs/qwen3-layer0-embedding-pruning-validation.md`.
 
+The experiment preset now also supports the fused two-stage mode requested for
+algorithm research: physically retain 50% before layer 0, then let each decode
+query select 50% of that cached subset after layer 15. See
+`docs/two-stage-prefill-decode-pruning.md` for configuration, exact replay,
+Qwen2.5/Qwen3 H20 results, and the important eager-Flex performance caveat.
+
+```bash
+PREFILL_KEEP_RATIO=0.5 KEEP_RATIO=0.5 \
+PREFILL_SELECTOR=embedding_norm SELECTOR=vision_pulse \
+SELECTOR_INPUT=decode_query PRUNE_AFTER_LAYER=15 \
+bash scripts/run_vision_pruning_experiment.sh
+```
+
 ### 3. Merge Checkpoints
 
 After training, merge the FSDP-sharded checkpoint into a standard HuggingFace model:

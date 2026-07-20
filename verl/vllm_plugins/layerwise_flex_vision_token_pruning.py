@@ -46,6 +46,7 @@ from vllm.v1.attention.backends.flex_attention import (
 )
 from vllm.v1.attention.backends.registry import AttentionBackendEnum, register_backend
 
+from verl.models.vision_token_pruning.config import VisionTokenPruningConfig
 from verl.models.vision_token_pruning.dynamic import select_dynamic_visual_kv
 from verl.models.vision_token_pruning.strategy import VisionTokenSelectionEngine
 from verl.models.vision_token_pruning.transport import (
@@ -53,6 +54,10 @@ from verl.models.vision_token_pruning.transport import (
     encode_embedding_selection_metadata,
 )
 from verl.vllm_plugins.vision_token_pruning_common import pruning_config_from_hf
+from verl.vllm_plugins.vision_token_pruning import (
+    VerlPrunedQwen2_5VLMultiModalProcessor,
+    VerlPrunedQwen3VLMultiModalProcessor,
+)
 
 _FORWARD_CONTEXT_KEY = "verl_layerwise_flex_vision_pruning"
 _LAYER_INDEX_PATTERN = re.compile(r"(?:^|\.)layers\.(\d+)(?:\.|$)")
@@ -67,6 +72,7 @@ class LayerwiseFlexPruningPlan:
     candidate_ids: torch.Tensor
     query_keep_mask: torch.Tensor | None
     selection_engine: VisionTokenSelectionEngine
+    candidate_original_counts: torch.Tensor | None = None
     pre_pruning_backend: str = "flex"
     capture_values: torch.Tensor | None = None
     dynamic_request_slot_keep: torch.Tensor | None = None
@@ -83,6 +89,10 @@ class LayerwiseFlexPruningPlan:
             torch.int64,
         ):
             raise ValueError("candidate_ids must be a rank-1 integer tensor")
+        if self.candidate_original_counts is None:
+            self.candidate_original_counts = torch.zeros_like(self.candidate_ids)
+        if self.candidate_original_counts.shape != self.candidate_ids.shape:
+            raise ValueError("candidate_original_counts must match candidate_ids")
         if self.query_keep_mask is not None and (
             self.query_keep_mask.ndim != 1 or self.query_keep_mask.dtype != torch.bool
         ):
@@ -308,6 +318,15 @@ class LayerwisePrunedFlexAttentionImpl(FlexAttentionImpl):
             dtype=torch.int32,
             device=key.device,
         )
+        if plan.selection_engine.config.uses_two_stage_pruning:
+            if capture_capacity < 3:
+                raise ValueError("two-stage selection capture_capacity must be at least 3")
+            prefill_rows = candidate_ids > 0
+            original_counts = plan.candidate_original_counts[:actual_tokens].to(key.device)
+            if bool(prefill_rows.any()):
+                capture[prefill_rows, 0] = candidate_ids[prefill_rows].to(torch.int32)
+                capture[prefill_rows, 1] = original_counts[prefill_rows].to(torch.int32)
+                capture[prefill_rows, -1] = 1
 
         for request_index in range(request_count):
             start = int(metadata.query_start_loc[request_index].item())
@@ -338,11 +357,18 @@ class LayerwisePrunedFlexAttentionImpl(FlexAttentionImpl):
                 min_keep_ratio=min_keep_ratio,
                 max_keep_ratio=max_keep_ratio,
             )
-            if result.keep_count > capture_capacity:
+            usable_capacity = (
+                capture_capacity - 1
+                if plan.selection_engine.config.uses_two_stage_pruning
+                else capture_capacity
+            )
+            if result.keep_count > usable_capacity:
                 raise ValueError(
                     f"dynamic selection kept {result.keep_count} visual tokens, exceeding "
-                    f"capture_capacity={capture_capacity}"
+                    f"usable capture capacity={usable_capacity}"
                 )
+            if bool(capture[query_index, -1]):
+                raise ValueError("two-stage prefill metadata collided with the dynamic query row")
             visual_slots = context_slots[context_visual]
             selected_slots = visual_slots.index_select(0, result.kept_visual_indices)
             request_slot_keep[request_index, visual_slots] = False
@@ -553,9 +579,31 @@ class _LayerwiseFlexPruningMixin:
             self._pruning_config,
             seed=int(vllm_config.model_config.seed),
         )
+        self._prefill_selection_engine = None
+        if self._pruning_config.uses_two_stage_pruning:
+            assert self._pruning_config.prefill_keep_ratio is not None
+            self._prefill_selection_engine = VisionTokenSelectionEngine(
+                VisionTokenPruningConfig(
+                    enabled=True,
+                    keep_ratio=self._pruning_config.prefill_keep_ratio,
+                    selector=self._pruning_config.prefill_selector,
+                    selector_kwargs=self._pruning_config.prefill_selector_kwargs,
+                ),
+                seed=int(vllm_config.model_config.seed),
+            )
+            expected_pruning_rate = 1.0 - self._pruning_config.prefill_keep_ratio
+            if (
+                self.video_pruning_rate is None
+                or abs(float(self.video_pruning_rate) - expected_pruning_rate) > 1e-8
+            ):
+                raise ValueError(
+                    "two-stage vLLM video_pruning_rate must equal 1 - prefill_keep_ratio"
+                )
         self._pending_selection_metadata: list[torch.Tensor] = []
+        self._pending_original_counts: list[torch.Tensor] = []
         self._pending_query_keep_mask: torch.Tensor | None = None
         self._pending_candidate_ids: torch.Tensor | None = None
+        self._pending_candidate_original_counts: torch.Tensor | None = None
         self._pending_capture_values: torch.Tensor | None = None
 
     def recompute_mrope_positions(
@@ -565,12 +613,27 @@ class _LayerwiseFlexPruningMixin:
         mrope_positions: torch.LongTensor,
         num_computed_tokens: int,
     ):
-        self._pending_selection_metadata.extend(
-            decode_embedding_selection_metadata(embeddings)
-            for embeddings in multimodal_embeddings
-            if len(embeddings)
+        for embeddings in multimodal_embeddings:
+            if not len(embeddings):
+                continue
+            if self._pruning_config.uses_two_stage_pruning:
+                self._pending_selection_metadata.append(
+                    decode_embedding_selection_metadata(embeddings[:, -4:-2])
+                )
+                self._pending_original_counts.append(
+                    decode_embedding_selection_metadata(embeddings[:, -2:])
+                )
+            else:
+                self._pending_selection_metadata.append(
+                    decode_embedding_selection_metadata(embeddings)
+                )
+                self._pending_original_counts.append(
+                    embeddings.new_zeros(len(embeddings), dtype=torch.long)
+                )
+        metadata_columns = 4 if self._pruning_config.uses_two_stage_pruning else 2
+        embeddings_without_metadata = tuple(
+            embeddings[:, :-metadata_columns] for embeddings in multimodal_embeddings
         )
-        embeddings_without_metadata = tuple(embeddings[:, :-2] for embeddings in multimodal_embeddings)
         return super().recompute_mrope_positions(
             input_ids,
             embeddings_without_metadata,
@@ -595,13 +658,22 @@ class _LayerwiseFlexPruningMixin:
             if self._pending_selection_metadata
             else input_ids.new_empty(0)
         )
+        original_counts = (
+            torch.cat(self._pending_original_counts)
+            if self._pending_original_counts
+            else input_ids.new_empty(0)
+        )
         self._pending_selection_metadata.clear()
+        self._pending_original_counts.clear()
         if encoded.numel():
             if is_multimodal is None or int(is_multimodal.sum()) != encoded.numel():
                 raise ValueError("Flex selection metadata does not match image placeholders")
             candidate_ids = torch.zeros(input_ids.numel(), dtype=torch.int64, device=input_ids.device)
             candidate_ids[is_multimodal] = encoded.to(input_ids.device)
             self._pending_candidate_ids = candidate_ids
+            candidate_original_counts = torch.zeros_like(candidate_ids)
+            candidate_original_counts[is_multimodal] = original_counts.to(input_ids.device)
+            self._pending_candidate_original_counts = candidate_original_counts
 
             if self._pruning_config.selector_input == "vision_embedding":
                 keep = torch.ones(input_ids.numel(), dtype=torch.bool, device=input_ids.device)
@@ -629,10 +701,18 @@ class _LayerwiseFlexPruningMixin:
             actual_tokens = metadata.num_actual_tokens
             candidate_ids = self._pending_candidate_ids
             self._pending_candidate_ids = None
+            candidate_original_counts = self._pending_candidate_original_counts
+            self._pending_candidate_original_counts = None
             if candidate_ids is None:
                 candidate_ids = torch.zeros(actual_tokens, dtype=torch.int64, device=metadata.seq_lens.device)
             else:
                 candidate_ids = candidate_ids[:actual_tokens].to(metadata.seq_lens.device)
+            if candidate_original_counts is None:
+                candidate_original_counts = torch.zeros_like(candidate_ids)
+            else:
+                candidate_original_counts = candidate_original_counts[:actual_tokens].to(
+                    metadata.seq_lens.device
+                )
             keep = self._pending_query_keep_mask
             self._pending_query_keep_mask = None
             if keep is not None:
@@ -641,6 +721,7 @@ class _LayerwiseFlexPruningMixin:
                 prune_after_layer=self._pruning_config.prune_after_layer,
                 selector_input=self._pruning_config.selector_input,
                 candidate_ids=candidate_ids,
+                candidate_original_counts=candidate_original_counts,
                 query_keep_mask=keep,
                 selection_engine=self._selection_engine,
                 pre_pruning_backend=self._pruning_config.pre_pruning_backend,
@@ -668,21 +749,42 @@ class _LayerwiseFlexPruningMixin:
         merge_size = self.visual.spatial_merge_size
         output = []
         for embeddings, grid_thw in zip(image_embeds_split, image_grid_thw.tolist(), strict=True):
-            if self._pruning_config.selector_input in {"decoder_key", "decode_query"}:
+            if self._pruning_config.uses_two_stage_pruning:
+                assert self._prefill_selection_engine is not None
+                indices = self._prefill_selection_engine.select(embeddings, grid_thw=grid_thw)
+            elif self._pruning_config.selector_input in {"decoder_key", "decode_query"}:
                 indices = torch.arange(len(embeddings), device=embeddings.device)
             else:
                 indices = self._selection_engine.select(embeddings, grid_thw=grid_thw)
             positions = compute_mrope_for_media(grid_thw, merge_size).to(embeddings.device)
             if self._append_zero_position_axis:
                 positions = torch.cat([positions, torch.zeros_like(positions[:, :1])], dim=1)
-            metadata = torch.zeros((len(embeddings), 2), dtype=embeddings.dtype, device=embeddings.device)
-            metadata[indices] = encode_embedding_selection_metadata(indices, dtype=embeddings.dtype)
-            output.append(torch.cat([embeddings, positions, metadata], dim=1))
+            if self._pruning_config.uses_two_stage_pruning:
+                index_metadata = encode_embedding_selection_metadata(indices, dtype=embeddings.dtype)
+                count_metadata = encode_embedding_selection_metadata(
+                    indices.new_full((len(indices),), len(embeddings) - 1),
+                    dtype=embeddings.dtype,
+                )
+                metadata = torch.cat((index_metadata, count_metadata), dim=1)
+                output.append(
+                    torch.cat(
+                        [embeddings[indices], positions[indices], metadata],
+                        dim=1,
+                    )
+                )
+            else:
+                metadata = torch.zeros(
+                    (len(embeddings), 2),
+                    dtype=embeddings.dtype,
+                    device=embeddings.device,
+                )
+                metadata[indices] = encode_embedding_selection_metadata(indices, dtype=embeddings.dtype)
+                output.append(torch.cat([embeddings, positions, metadata], dim=1))
         return tuple(output)
 
 
 @MULTIMODAL_REGISTRY.register_processor(
-    Qwen2_5_VLMultiModalProcessor,
+    VerlPrunedQwen2_5VLMultiModalProcessor,
     info=Qwen2_5_VLProcessingInfo,
     dummy_inputs=Qwen2_5_VLDummyInputsBuilder,
 )
@@ -698,7 +800,7 @@ class VerlLayerwiseFlexPrunedQwen2_5VLForConditionalGeneration(
 
 
 @MULTIMODAL_REGISTRY.register_processor(
-    Qwen3VLMultiModalProcessor,
+    VerlPrunedQwen3VLMultiModalProcessor,
     info=Qwen3VLProcessingInfo,
     dummy_inputs=Qwen3VLDummyInputsBuilder,
 )

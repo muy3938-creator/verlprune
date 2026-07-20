@@ -48,17 +48,29 @@ actor_rollout_ref:
 
       keep_ratio: 0.5
 
-      selector: embedding_norm
+      # Stage 2: each decode query retains 50% of the physically cached
+      # visual subset, so the nominal final fraction is 25% of the original.
+      selector: vision_pulse
 
-      selector_kwargs: {}
+      selector_kwargs:
+        budget_mode: fixed
+        temperature: 0.1
+        capture_capacity: 64
 
-      prune_after_layer: -1
+      # Stage 1: select from vision embeddings immediately before layer 0.
+      prefill_keep_ratio: 0.5
+
+      prefill_selector: embedding_norm
+
+      prefill_selector_kwargs: {}
+
+      prune_after_layer: 15
 
       layerwise_backend: flex
 
-      pre_pruning_backend: flex
+      pre_pruning_backend: flash
 
-      selector_input: vision_embedding
+      selector_input: decode_query
 
   actor:
 

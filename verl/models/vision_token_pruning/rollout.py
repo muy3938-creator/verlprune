@@ -6,7 +6,11 @@ from typing import Any
 
 from .backends import VllmPruningLaunchOptions, build_vllm_pruning_launch_options
 from .config import VisionTokenPruningConfig, coerce_vision_token_pruning_config
-from .transport import decode_vllm_dynamic_selection_capture, decode_vllm_selection_capture
+from .transport import (
+    decode_vllm_dynamic_selection_capture,
+    decode_vllm_selection_capture,
+    decode_vllm_two_stage_selection_capture,
+)
 
 
 class VisionTokenPruningRollout:
@@ -59,6 +63,17 @@ class VisionTokenPruningRollout:
             return None
         if original_token_count is None:
             raise RuntimeError("missing original image-token count for a pruned rollout")
+        if self.config.uses_two_stage_pruning:
+            assert self.config.prefill_keep_ratio is not None
+            return decode_vllm_two_stage_selection_capture(
+                routed_experts,
+                prefill_keep_ratio=self.config.prefill_keep_ratio,
+                prefill_selector=self.config.prefill_selector,
+                prefill_selector_kwargs=self.config.prefill_selector_kwargs,
+                decode_keep_ratio=self.config.keep_ratio,
+                decode_selector=self.config.selector,
+                decode_selector_kwargs=self.config.selector_kwargs,
+            ).to_wire()
         decoder = (
             decode_vllm_dynamic_selection_capture
             if self.config.uses_dynamic_decode_selection

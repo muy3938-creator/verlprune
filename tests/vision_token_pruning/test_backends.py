@@ -102,3 +102,28 @@ def test_dynamic_decode_reserves_capture_width():
     )
 
     assert options.hf_overrides["text_config"]["num_experts_per_tok"] == 32
+
+
+def test_two_stage_launch_uses_prefill_ratio_for_physical_prompt_and_decode_ratio_for_flex():
+    config = VisionTokenPruningConfig(
+        enabled=True,
+        keep_ratio=0.25,
+        prune_after_layer=15,
+        pre_pruning_backend="flash",
+        selector="vision_pulse",
+        selector_input="decode_query",
+        selector_kwargs={"budget_mode": "fixed", "capture_capacity": 64},
+        prefill_keep_ratio=0.5,
+        prefill_selector="embedding_norm",
+    )
+
+    options = build_vllm_pruning_launch_options(
+        config,
+        model_type="qwen3_vl",
+        routing_replay_enabled=False,
+    )
+
+    assert options.cli_args["video_pruning_rate"] == pytest.approx(0.5)
+    assert options.cli_args["attention_config"] == {"backend": "FLEX_ATTENTION"}
+    assert options.hf_overrides["vision_token_pruning"]["keep_ratio"] == 0.25
+    assert options.hf_overrides["vision_token_pruning"]["prefill_keep_ratio"] == 0.5

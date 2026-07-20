@@ -94,6 +94,14 @@ vision_token_pruning:
   # JSON-compatible options passed only to the rollout-side strategy request
   selector_kwargs: {}
 
+  # Optional first-stage physical pruning before decoder layer 0. Keep null
+  # for the legacy single-stage modes.
+  prefill_keep_ratio: null
+
+  prefill_selector: embedding_norm
+
+  prefill_selector_kwargs: {}
+
   # -1 selects before layer 0 and physically shares the reduced visual KV with decode
   prune_after_layer: -1
 

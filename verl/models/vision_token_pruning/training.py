@@ -11,6 +11,7 @@ from .config import VisionTokenPruningConfig, compute_selector_fingerprint
 from .embeddings import KEEP_MASK_KEY
 from .protocol import (
     DynamicVisionTokenSelection,
+    TwoStageVisionTokenSelection,
     VisionTokenSelection,
     selection_from_wire,
 )
@@ -35,6 +36,8 @@ def attach_selection_to_multi_modal_inputs(
     attached = {**multi_modal_inputs, SELECTION_WIRE_KEY: selection.to_wire()}
     if isinstance(selection, VisionTokenSelection):
         attached[KEEP_MASK_KEY] = selection_to_keep_mask(selection)
+    elif isinstance(selection, TwoStageVisionTokenSelection):
+        attached[KEEP_MASK_KEY] = selection_to_keep_mask(selection.prefill)
     return attached
 
 
@@ -124,6 +127,23 @@ def prepare_actor_pruning_inputs(
         raise ValueError("cannot apply visual-token pruning when it is disabled in the actor config")
     if image_token_id is None:
         raise ValueError("vision token pruning requires model.config.image_token_id")
+
+    if config.uses_two_stage_pruning:
+        prefill_attention_mask, dynamic_attention_mask = replay_two_stage_rollout_selection(
+            input_ids,
+            attention_mask,
+            per_sample_multi_modal_inputs,
+            image_token_id=image_token_id,
+            config=config,
+        )
+        return PreparedActorPruningInputs(
+            attention_mask=prefill_attention_mask,
+            per_sample_multi_modal_inputs=[
+                strip_selection_metadata(inputs) if inputs is not None else None
+                for inputs in per_sample_multi_modal_inputs
+            ],
+            dynamic_layerwise_attention_mask=dynamic_attention_mask,
+        )
 
     if config.uses_dynamic_decode_selection:
         dynamic_attention_mask = replay_dynamic_rollout_selection(
@@ -225,6 +245,89 @@ def replay_rollout_selection_on_attention_mask(
             )
         output[sample_index, image_positions[~keep_mask.to(image_positions.device)]] = 0
     return output
+
+
+def replay_two_stage_rollout_selection(
+    input_ids: torch.Tensor,
+    attention_mask: torch.Tensor,
+    per_sample_multi_modal_inputs: list[dict[str, Any] | None],
+    *,
+    image_token_id: int,
+    config: VisionTokenPruningConfig,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Replay physical prefill pruning and decode routing within that subset."""
+
+    if not config.uses_two_stage_pruning or config.prefill_keep_ratio is None:
+        raise ValueError("two-stage replay requires a two-stage pruning config")
+    if input_ids.ndim != 2 or attention_mask.shape != input_ids.shape:
+        raise ValueError("input_ids and attention_mask must have identical rank-2 shapes")
+    if len(per_sample_multi_modal_inputs) != input_ids.shape[0]:
+        raise ValueError("multi_modal_inputs length must match batch size")
+
+    prefill_fingerprint = compute_selector_fingerprint(
+        config.prefill_selector,
+        config.prefill_selector_kwargs,
+    )
+    decode_fingerprint = compute_selector_fingerprint(config.selector, config.selector_kwargs)
+    prefill_attention = attention_mask.clone()
+    batch_size, sequence_length = input_ids.shape
+    dynamic_mask = torch.ones(
+        (batch_size, sequence_length, sequence_length),
+        dtype=torch.bool,
+        device=input_ids.device,
+    )
+
+    for sample_index, multi_modal_inputs in enumerate(per_sample_multi_modal_inputs):
+        if multi_modal_inputs is None or SELECTION_WIRE_KEY not in multi_modal_inputs:
+            raise ValueError(f"sample {sample_index} is missing two-stage rollout selection")
+        selection = selection_from_wire(multi_modal_inputs[SELECTION_WIRE_KEY])
+        if not isinstance(selection, TwoStageVisionTokenSelection):
+            raise ValueError(f"sample {sample_index} does not contain a two-stage selection")
+        prefill = selection.prefill
+        decode = selection.decode
+        if prefill.keep_ratio != config.prefill_keep_ratio:
+            raise ValueError(f"sample {sample_index} prefill keep ratio does not match actor config")
+        if prefill.selector != config.prefill_selector or prefill.selector_fingerprint != prefill_fingerprint:
+            raise ValueError(f"sample {sample_index} prefill selector does not match actor config")
+        if decode.nominal_keep_ratio != config.keep_ratio:
+            raise ValueError(f"sample {sample_index} decode keep ratio does not match actor config")
+        if decode.selector != config.selector or decode.selector_fingerprint != decode_fingerprint:
+            raise ValueError(f"sample {sample_index} decode selector does not match actor config")
+        keep_mask = multi_modal_inputs.get(KEEP_MASK_KEY)
+        if keep_mask is None or not torch.equal(keep_mask.cpu(), selection_to_keep_mask(prefill)):
+            raise ValueError(f"sample {sample_index} prefill keep mask does not match rollout selection")
+
+        image_positions = (
+            (input_ids[sample_index] == image_token_id) & attention_mask[sample_index].bool()
+        ).nonzero(as_tuple=False).flatten()
+        if len(image_positions) != prefill.original_visual_token_count:
+            raise ValueError(
+                f"sample {sample_index} prefill selection covers {prefill.original_visual_token_count} "
+                f"visual tokens, but input contains {len(image_positions)}"
+            )
+        keep_on_device = keep_mask.to(image_positions.device)
+        prefill_attention[sample_index, image_positions[~keep_on_device]] = 0
+        retained_image_positions = image_positions[keep_on_device]
+
+        valid_positions = prefill_attention[sample_index].bool().nonzero(as_tuple=False).flatten()
+        if len(decode.query_kept_visual_indices) > len(valid_positions):
+            raise ValueError(f"sample {sample_index} has more decode routes than compact sequence tokens")
+        for relative_query, selected_indices in enumerate(decode.query_kept_visual_indices):
+            if not selected_indices:
+                continue
+            query_position = valid_positions[relative_query]
+            dynamic_mask[sample_index, query_position, retained_image_positions] = False
+            selected = torch.tensor(
+                selected_indices,
+                dtype=torch.long,
+                device=retained_image_positions.device,
+            )
+            dynamic_mask[
+                sample_index,
+                query_position,
+                retained_image_positions.index_select(0, selected),
+            ] = True
+    return prefill_attention, dynamic_mask
 
 
 def replay_dynamic_rollout_selection(
