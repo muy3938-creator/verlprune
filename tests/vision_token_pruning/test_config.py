@@ -246,6 +246,36 @@ def test_decode_query_selects_dynamic_flex_mode():
     assert config.backend_name == "layerwise_flex"
 
 
+def test_top_p_budget_schedule_is_validated_and_serialized():
+    config = VisionTokenPruningConfig(
+        enabled=True,
+        keep_ratio=0.1,
+        prune_after_layer=15,
+        selector="vision_pulse",
+        selector_input="decode_query",
+        selector_kwargs={
+            "budget_mode": "top_p",
+            "top_p": 0.97,
+            "budget_schedule": [0.99, 0.98, 0.97],
+        },
+    )
+
+    assert config.selector_kwargs["budget_mode"] == "top_p"
+    assert config.to_backend_payload()["selector_kwargs"]["budget_schedule"] == [0.99, 0.98, 0.97]
+
+
+def test_top_p_budget_rejects_invalid_thresholds():
+    with pytest.raises(ValueError, match="top_p"):
+        VisionTokenPruningConfig(
+            enabled=True,
+            keep_ratio=0.1,
+            prune_after_layer=15,
+            selector="vision_pulse",
+            selector_input="decode_query",
+            selector_kwargs={"budget_mode": "top_p", "top_p": 0.0},
+        )
+
+
 def test_decode_query_rejects_compact_or_non_vision_pulse_modes():
     with pytest.raises(ValueError, match="layerwise_backend='flex'"):
         VisionTokenPruningConfig(

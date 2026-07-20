@@ -88,6 +88,7 @@ class LayerwiseFlexPruningPlan:
     dynamic_request_slot_keep: torch.Tensor | None = None
     dynamic_request_by_query: torch.Tensor | None = None
     dynamic_query_active: torch.Tensor | None = None
+    budget_override: float | None = None
 
     def __post_init__(self) -> None:
         if self.prune_after_layer < 0:
@@ -335,6 +336,11 @@ class LayerwisePrunedFlexAttentionImpl(FlexAttentionImpl):
         options = plan.selection_engine.config.selector_kwargs
         temperature = float(options.get("temperature", 0.1))
         budget_mode = str(options.get("budget_mode", "visual_mass"))
+        top_p = float(
+            plan.budget_override
+            if plan.budget_override is not None
+            else options.get("top_p", 0.95)
+        )
         min_keep_ratio = float(options.get("min_keep_ratio", 0.0))
         max_keep_ratio = float(options.get("max_keep_ratio", 1.0))
         capture_capacity = int(options.get("capture_capacity", 64))
@@ -379,6 +385,7 @@ class LayerwisePrunedFlexAttentionImpl(FlexAttentionImpl):
                 temperature=temperature,
                 budget_mode=budget_mode,
                 fixed_keep_ratio=plan.selection_engine.config.keep_ratio,
+                top_p=top_p,
                 min_keep_ratio=min_keep_ratio,
                 max_keep_ratio=max_keep_ratio,
             )
@@ -688,6 +695,7 @@ class _LayerwiseFlexPruningMixin:
         self._pending_candidate_ids: torch.Tensor | None = None
         self._pending_candidate_original_counts: torch.Tensor | None = None
         self._pending_capture_values: torch.Tensor | None = None
+        self._budget_schedule_index = 0
 
     def recompute_mrope_positions(
         self,
@@ -808,6 +816,12 @@ class _LayerwiseFlexPruningMixin:
             self._pending_query_keep_mask = None
             if keep is not None:
                 keep = keep[:actual_tokens].to(metadata.seq_lens.device)
+            schedule = self._pruning_config.selector_kwargs.get("budget_schedule", ())
+            budget_override = None
+            if schedule:
+                schedule = tuple(float(value) for value in schedule)
+                budget_override = schedule[min(self._budget_schedule_index, len(schedule) - 1)]
+                self._budget_schedule_index += 1
             context.additional_kwargs[_FORWARD_CONTEXT_KEY] = LayerwiseFlexPruningPlan(
                 prune_after_layer=self._pruning_config.prune_after_layer,
                 selector_input=self._pruning_config.selector_input,
@@ -821,6 +835,7 @@ class _LayerwiseFlexPruningMixin:
                     if self._pruning_config.uses_two_stage_pruning
                     else None
                 ),
+                budget_override=budget_override,
             )
             _debug(
                 f"plan actual={actual_tokens} candidates={int((candidate_ids > 0).sum())} "

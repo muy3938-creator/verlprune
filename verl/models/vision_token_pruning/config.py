@@ -149,6 +149,8 @@ class VisionTokenPruningConfig:
             allowed_dynamic_options = {
                 "budget_mode",
                 "temperature",
+                "top_p",
+                "budget_schedule",
                 "min_keep_ratio",
                 "max_keep_ratio",
                 "capture_capacity",
@@ -160,10 +162,23 @@ class VisionTokenPruningConfig:
                     f"{sorted(unknown)}"
                 )
             budget_mode = str(self.selector_kwargs.get("budget_mode", "visual_mass"))
-            if budget_mode not in {"fixed", "visual_mass"}:
+            if budget_mode not in {"fixed", "visual_mass", "top_p"}:
                 raise ValueError(
-                    "vision_pulse budget_mode must be 'fixed' or 'visual_mass'"
+                    "vision_pulse budget_mode must be 'fixed', 'visual_mass', or 'top_p'"
                 )
+            top_p = float(self.selector_kwargs.get("top_p", 0.95))
+            if not 0.0 < top_p <= 1.0:
+                raise ValueError("vision_pulse top_p must be in (0, 1]")
+            schedule = self.selector_kwargs.get("budget_schedule", ())
+            if schedule is None:
+                schedule = ()
+            if not isinstance(schedule, (list, tuple)) or not schedule:
+                if schedule not in ((), []):
+                    raise ValueError("vision_pulse budget_schedule must be a non-empty list")
+            else:
+                schedule = tuple(float(value) for value in schedule)
+                if any(not 0.0 < value <= 1.0 for value in schedule):
+                    raise ValueError("vision_pulse budget_schedule values must be in (0, 1]")
             temperature = float(self.selector_kwargs.get("temperature", 0.1))
             if temperature <= 0:
                 raise ValueError("vision_pulse temperature must be positive")

@@ -30,10 +30,10 @@ export RAY_DEDUP_LOGS=0
 
 STRATEGY_ARGS=()
 if [[ -n "${SELECTOR_KWARGS}" ]]; then
-    STRATEGY_ARGS+=("actor_rollout_ref.model.vision_token_pruning.selector_kwargs=${SELECTOR_KWARGS}")
+    STRATEGY_ARGS+=("++actor_rollout_ref.model.vision_token_pruning.selector_kwargs=${SELECTOR_KWARGS}")
 fi
 if [[ -n "${PREFILL_SELECTOR_KWARGS}" ]]; then
-    STRATEGY_ARGS+=("actor_rollout_ref.model.vision_token_pruning.prefill_selector_kwargs=${PREFILL_SELECTOR_KWARGS}")
+    STRATEGY_ARGS+=("++actor_rollout_ref.model.vision_token_pruning.prefill_selector_kwargs=${PREFILL_SELECTOR_KWARGS}")
 fi
 
 python3 -m verl.trainer.main_ppo --config-name vision_pruning_experiment \

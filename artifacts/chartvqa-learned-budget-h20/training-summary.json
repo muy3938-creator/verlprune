@@ -1,0 +1,57 @@
+{
+  "environment": {
+    "gpu": "NVIDIA H20",
+    "pytorch": "2.10.0+cu129",
+    "vllm": "0.18.0",
+    "transformers": "4.57.6",
+    "dtype": "bfloat16"
+  },
+  "training": {
+    "steps": 3,
+    "response_length_limit": 512,
+    "response_lengths": [100, 58, 15],
+    "gradient_norms": [0.13953091204166412, 0.15835541486740112, 0.2141258418560028],
+    "max_length_hit_rate": 0.0,
+    "peak_allocated_gib": 36.727890491485596,
+    "selector": "vision_pulse",
+    "budget_mode": "top_p",
+    "budget_schedule": [0.99, 0.97, 0.95, 0.9],
+    "min_keep_ratio": 0.05,
+    "max_keep_ratio": 0.5
+  },
+  "adapter": {
+    "rank": 8,
+    "alpha": 16,
+    "size_mib": 58,
+    "sha256": "095495b399cf3c69ef26f08c79f4733f82a6813751d961062ca428aea262a1d6"
+  },
+  "comparison_16_samples": {
+    "dense": {
+      "accuracy": 0.5,
+      "mean_latency_s": 1.0297589840621413,
+      "mean_generated_tokens": 34.75,
+      "max_length_hit_rate": 0.0
+    },
+    "random_10_percent": {
+      "accuracy": 0.1875,
+      "mean_retained_visual_tokens": 20.75,
+      "mean_latency_s": 3.201960269562619,
+      "mean_generated_tokens": 77.0625,
+      "max_length_hit_rate": 0.0
+    },
+    "top_p_0_95": {
+      "accuracy": 0.4375,
+      "mean_retained_visual_tokens": 160.6094890510949,
+      "mean_latency_s": 1.533390026875054,
+      "mean_generated_tokens": 35.25,
+      "max_length_hit_rate": 0.0
+    },
+    "trained_top_p_0_95": {
+      "accuracy": 0.5,
+      "mean_retained_visual_tokens": 162.24137931034483,
+      "mean_latency_s": 2.0870292748126076,
+      "mean_generated_tokens": 31.8125,
+      "max_length_hit_rate": 0.0
+    }
+  }
+}

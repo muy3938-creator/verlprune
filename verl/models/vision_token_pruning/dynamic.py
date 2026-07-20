@@ -46,6 +46,7 @@ def select_dynamic_visual_kv(
     temperature: float,
     budget_mode: str,
     fixed_keep_ratio: float,
+    top_p: float = 0.95,
     min_keep_ratio: float = 0.0,
     max_keep_ratio: float = 1.0,
 ) -> DynamicVisualSelectionResult:
@@ -61,9 +62,13 @@ def select_dynamic_visual_kv(
         visual_context_mask: Boolean mask over the full context.
         softmax_scale: The model attention scale, normally ``head_dim**-0.5``.
         temperature: VisionPulse temperature ``tau``.
-        budget_mode: ``visual_mass`` for Eq. (7), or ``fixed`` for a fixed
-            keep ratio with query-dependent token identities.
+        budget_mode: ``visual_mass`` for Eq. (7), ``top_p`` for the smallest
+            visual-token subset containing ``top_p`` of visual attention mass,
+            or ``fixed`` for a fixed keep ratio with query-dependent token
+            identities.
         fixed_keep_ratio: Used only by ``fixed`` budgeting.
+        top_p: Used only by ``top_p`` budgeting. It is a cumulative visual
+            attention-mass threshold, not a token retention ratio.
         min_keep_ratio: Optional lower clamp for the dynamic budget.
         max_keep_ratio: Optional upper clamp for the dynamic budget.
     """
@@ -82,8 +87,10 @@ def select_dynamic_visual_kv(
         raise ValueError("query and key head dimensions must match")
     if temperature <= 0:
         raise ValueError("temperature must be positive")
-    if budget_mode not in {"visual_mass", "fixed"}:
-        raise ValueError("budget_mode must be 'visual_mass' or 'fixed'")
+    if budget_mode not in {"visual_mass", "top_p", "fixed"}:
+        raise ValueError("budget_mode must be 'visual_mass', 'top_p', or 'fixed'")
+    if not 0.0 < top_p <= 1.0:
+        raise ValueError("top_p must be in (0, 1]")
     if not 0.0 <= min_keep_ratio <= max_keep_ratio <= 1.0:
         raise ValueError("dynamic keep-ratio clamps must satisfy 0 <= min <= max <= 1")
 
@@ -114,6 +121,15 @@ def select_dynamic_visual_kv(
 
     if budget_mode == "visual_mass":
         keep_count = math.ceil(float(visual_mass_max.item()) * visual_count)
+    elif budget_mode == "top_p":
+        # Select the smallest set whose *visual* attention mass reaches p.
+        # The denominator remains the complete text+visual context above, so
+        # low visual reliance and within-visual concentration remain distinct
+        # signals.  K is data-dependent even when top_p is fixed.
+        mass = importance_scores.sort(descending=True).values
+        cumulative = mass.cumsum(dim=0)
+        target = float(top_p) * mass.sum()
+        keep_count = int(torch.searchsorted(cumulative, target).item()) + 1
     else:
         keep_count = _ratio_bound(visual_count, fixed_keep_ratio, rounding="round")
 

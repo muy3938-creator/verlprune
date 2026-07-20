@@ -1,0 +1,213 @@
+{
+  "metrics": {
+    "model": "/workspace/models/Qwen2.5-VL-3B-Instruct",
+    "adapter": null,
+    "dataset": "/workspace/data/chartvqa",
+    "split": "val",
+    "limit": 16,
+    "mode": "baseline",
+    "keep_ratio": 0.1,
+    "top_p": 0.95,
+    "layer": 0,
+    "accuracy": 0.5,
+    "mean_latency_s": 1.0297589840621413,
+    "mean_kept_visual_tokens": 0.0,
+    "mean_generated_tokens": 34.75,
+    "max_generated_tokens": 98,
+    "max_length_hit_rate": 0.0
+  },
+  "records": [
+    {
+      "index": 0,
+      "query": "What's the color of graph with 56 as the highest value?",
+      "labels": [
+        "Blue"
+      ],
+      "answer": "The color of the graph with 56 as the highest value is blue.",
+      "correct": true,
+      "latency_s": 1.4234608389997447,
+      "generated_tokens": 17,
+      "hit_max_new_tokens": false
+    },
+    {
+      "index": 1,
+      "query": "In which year the difference between blue and green graph 1?",
+      "labels": [
+        "2018"
+      ],
+      "answer": "To find the year when the difference between the blue (Germany) and green (U.S.) graphs is the smallest:\n1. Look for the lowest point where the blue line crosses below the green line.\n2. This occurs around 2014.\n3. The difference is minimal in this year.\n\n<answer>2014</answer>",
+      "correct": true,
+      "latency_s": 1.9651243319985952,
+      "generated_tokens": 72,
+      "hit_max_new_tokens": false
+    },
+    {
+      "index": 2,
+      "query": "What does the blue line represent?",
+      "labels": [
+        "Not too much/not at all"
+      ],
+      "answer": "The blue line represents the belief that the U.S. takes the interest of other countries into account when making international policy decisions.",
+      "correct": false,
+      "latency_s": 0.7463322629992035,
+      "generated_tokens": 26,
+      "hit_max_new_tokens": false
+    },
+    {
+      "index": 3,
+      "query": "What is the max value of blue line?",
+      "labels": [
+        "0.72"
+      ],
+      "answer": "The max value of the blue line (representing \"Not too much/not at all\") is 72, which occurred in 2018 during Trump's presidency.",
+      "correct": false,
+      "latency_s": 1.029852759998903,
+      "generated_tokens": 37,
+      "hit_max_new_tokens": false
+    },
+    {
+      "index": 4,
+      "query": "What's the percentage of respondents who say Job is a top priority for the president and Congress in 2016?",
+      "labels": [
+        "68"
+      ],
+      "answer": "The percentage of respondents who say jobs is a top priority for the president and Congress in 2016 is 68%.",
+      "correct": true,
+      "latency_s": 0.8103104759993585,
+      "generated_tokens": 28,
+      "hit_max_new_tokens": false
+    },
+    {
+      "index": 5,
+      "query": "Which line has the lowest value of 71%?",
+      "labels": [
+        "Economy"
+      ],
+      "answer": "The line representing \"Budget deficit\" has the lowest value of 71%.",
+      "correct": false,
+      "latency_s": 0.5172346569997899,
+      "generated_tokens": 17,
+      "hit_max_new_tokens": false
+    },
+    {
+      "index": 6,
+      "query": "What is the unfavourable value in 2014?",
+      "labels": [
+        "64"
+      ],
+      "answer": "The unfavourable value in 2014 is 64%.",
+      "correct": true,
+      "latency_s": 0.5080041590008477,
+      "generated_tokens": 17,
+      "hit_max_new_tokens": false
+    },
+    {
+      "index": 7,
+      "query": "What is the median value of favourable line in the graph?",
+      "labels": [
+        "40"
+      ],
+      "answer": "The median value of the favorable line in the graph is 31%.",
+      "correct": false,
+      "latency_s": 0.46155997599998955,
+      "generated_tokens": 16,
+      "hit_max_new_tokens": false
+    },
+    {
+      "index": 8,
+      "query": "Which answer response has the highest value on this graph?",
+      "labels": [
+        "Disapprove"
+      ],
+      "answer": "The highest value on the graph is 53, which corresponds to the \"Disapprove\" response in November 2013.",
+      "correct": true,
+      "latency_s": 0.81689337699936,
+      "generated_tokens": 29,
+      "hit_max_new_tokens": false
+    },
+    {
+      "index": 9,
+      "query": "How many data points on the disapprove line are above 50?",
+      "labels": [
+        "2"
+      ],
+      "answer": "The disapprove line has two data points above 50: in November 2013 (53) and December 2014 (49).",
+      "correct": true,
+      "latency_s": 0.9935701800004608,
+      "generated_tokens": 36,
+      "hit_max_new_tokens": false
+    },
+    {
+      "index": 10,
+      "query": "Which indicator remains all time lowest from Dec. 2008 to Sep. 2011?",
+      "labels": [
+        "Mostly good news"
+      ],
+      "answer": "The \"Mostly good news\" indicator remains all time lowest from Dec. 2008 to Sep. 2011.",
+      "correct": true,
+      "latency_s": 0.8464458099988406,
+      "generated_tokens": 30,
+      "hit_max_new_tokens": false
+    },
+    {
+      "index": 11,
+      "query": "How much value of 'Mostly bad news' increased from Jan. 2011 to Sept. 2011?",
+      "labels": [
+        "37"
+      ],
+      "answer": "To find the increase in 'Mostly bad news', calculate the difference between the values in September 2011 (35) and January 2011 (24). The increase is 11.",
+      "correct": false,
+      "latency_s": 1.2917791339987161,
+      "generated_tokens": 47,
+      "hit_max_new_tokens": false
+    },
+    {
+      "index": 12,
+      "query": "When does the red line reach the peak?",
+      "labels": [
+        "44538"
+      ],
+      "answer": "The red line reaches its peak in December 2008.",
+      "correct": false,
+      "latency_s": 0.43862712500049383,
+      "generated_tokens": 15,
+      "hit_max_new_tokens": false
+    },
+    {
+      "index": 13,
+      "query": "What's the total sum of peak points of all three lines?",
+      "labels": [
+        "155"
+      ],
+      "answer": "To find the total sum of peak points:\n1. Peak point for mostly good news is 5 in January 2010.\n2. Peak point for mostly bad news is 46 in September 2011.\n3. Peak point for mix of good and bad news is 80 in December 2008.\nSum: 5 + 46 + 80 = 131\n\n<answer>131</answer>",
+      "correct": false,
+      "latency_s": 2.6521437549999973,
+      "generated_tokens": 98,
+      "hit_max_new_tokens": false
+    },
+    {
+      "index": 14,
+      "query": "When does the yellow line reach the peak?",
+      "labels": [
+        "44207"
+      ],
+      "answer": "The yellow line reaches its peak in December 2008.",
+      "correct": false,
+      "latency_s": 0.43990771400058293,
+      "generated_tokens": 15,
+      "hit_max_new_tokens": false
+    },
+    {
+      "index": 15,
+      "query": "What's the total sum of peak points of green and red lines?",
+      "labels": [
+        "87"
+      ],
+      "answer": "To find the total sum of peak points:\n1. Identify the highest point on the green line (mostly good news).\n2. Identify the highest point on the red line (mostly bad news).\n3. Add these two peak points together.\n\n<answer>89</answer>",
+      "correct": true,
+      "latency_s": 1.534897187999377,
+      "generated_tokens": 56,
+      "hit_max_new_tokens": false
+    }
+  ]
+}

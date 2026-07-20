@@ -1,0 +1,261 @@
+{
+  "metrics": {
+    "model": "/workspace/models/Qwen2.5-VL-3B-Instruct",
+    "adapter": null,
+    "dataset": "/workspace/data/chartvqa",
+    "split": "val",
+    "limit": 16,
+    "mode": "random",
+    "keep_ratio": 0.1,
+    "top_p": 0.95,
+    "layer": 0,
+    "accuracy": 0.1875,
+    "mean_latency_s": 3.201960269562619,
+    "mean_kept_visual_tokens": 20.75,
+    "mean_generated_tokens": 77.0625,
+    "max_generated_tokens": 153,
+    "max_length_hit_rate": 0.0
+  },
+  "records": [
+    {
+      "index": 0,
+      "query": "What's the color of graph with 56 as the highest value?",
+      "labels": [
+        "Blue"
+      ],
+      "answer": "To determine the color of the graph with 56 as the highest value:\n\n1. Identify the graph with the highest value of 56.\n2. Observe the colors associated with this graph.\n3. The graph with 56 is represented in blue.\n\nTherefore, the color of the graph with 56 as the highest value is blue.\n\n<answer>Blue</answer>",
+      "correct": true,
+      "latency_s": 4.202476808000938,
+      "generated_tokens": 79,
+      "hit_max_new_tokens": false,
+      "kept_visual_counts": [
+        32
+      ]
+    },
+    {
+      "index": 1,
+      "query": "In which year the difference between blue and green graph 1?",
+      "labels": [
+        "2018"
+      ],
+      "answer": "To find the year where the difference between the blue and green graphs is the largest:\n1. Identify the highest point on the blue line.\n2. Find the corresponding year for that point.\n3. Compare this year to the years when the green line reaches its highest points.\n\n<answer>2018</answer>",
+      "correct": true,
+      "latency_s": 2.6598892570000316,
+      "generated_tokens": 65,
+      "hit_max_new_tokens": false,
+      "kept_visual_counts": [
+        32
+      ]
+    },
+    {
+      "index": 2,
+      "query": "What does the blue line represent?",
+      "labels": [
+        "Not too much/not at all"
+      ],
+      "answer": "The blue line represents the returns of other countries' stock markets in 2007.",
+      "correct": false,
+      "latency_s": 0.8620872310002596,
+      "generated_tokens": 20,
+      "hit_max_new_tokens": false,
+      "kept_visual_counts": [
+        26
+      ]
+    },
+    {
+      "index": 3,
+      "query": "What is the max value of blue line?",
+      "labels": [
+        "0.72"
+      ],
+      "answer": "To determine the maximum value of the blue line:\n1. The blue line starts at 26 in 2007.\n2. It increases to approximately 30 by 2018.\n3. Therefore, the maximum value of the blue line is around 30.\n\n<answer>30</answer>",
+      "correct": false,
+      "latency_s": 2.7740450210003473,
+      "generated_tokens": 68,
+      "hit_max_new_tokens": false,
+      "kept_visual_counts": [
+        26
+      ]
+    },
+    {
+      "index": 4,
+      "query": "What's the percentage of respondents who say Job is a top priority for the president and Congress in 2016?",
+      "labels": [
+        "68"
+      ],
+      "answer": "To find the percentage of respondents who say \"Job\" is a top priority for the president and Congress in 2016, I'll look at the data point for 2016 on the chart. The value for 2016 is approximately 58%. Therefore, the percentage of respondents who say \"Job\" is a top priority for the president and Congress in 2016 is around 58%.\n\n<answer>58%</answer>",
+      "correct": false,
+      "latency_s": 3.9838362489990686,
+      "generated_tokens": 98,
+      "hit_max_new_tokens": false,
+      "kept_visual_counts": [
+        16
+      ]
+    },
+    {
+      "index": 5,
+      "query": "Which line has the lowest value of 71%?",
+      "labels": [
+        "Economy"
+      ],
+      "answer": "To determine which line has the lowest value of 71%, I'll compare the percentages for each year:\n\n2015: 71%\n2014: 73%\n2013: 78%\n2012: 79%\n2011: 77%\n\nThe line representing 2015 has the lowest percentage at 71%.\n\n<answer>2015</answer>",
+      "correct": false,
+      "latency_s": 3.80577059999996,
+      "generated_tokens": 94,
+      "hit_max_new_tokens": false,
+      "kept_visual_counts": [
+        16
+      ]
+    },
+    {
+      "index": 6,
+      "query": "What is the unfavourable value in 2014?",
+      "labels": [
+        "64"
+      ],
+      "answer": "To find the unfavourable value in 2014:\n1. Identify the year on the x-axis as 2014.\n2. Locate the corresponding point on the line graph.\n3. The unfavourable value is represented by the green line, which shows a decrease from 2013 to 2014.\n\n<answer>5</answer>",
+      "correct": false,
+      "latency_s": 3.2192972270004248,
+      "generated_tokens": 79,
+      "hit_max_new_tokens": false,
+      "kept_visual_counts": [
+        14
+      ]
+    },
+    {
+      "index": 7,
+      "query": "What is the median value of favourable line in the graph?",
+      "labels": [
+        "40"
+      ],
+      "answer": "To find the median value of the favorable line:\n1. Identify the two middle points on the graph.\n2. The median is the average of these two points.\n3. Calculate the average of 50 and 55 to get 52.5.\n\n<answer>52.5</answer>",
+      "correct": false,
+      "latency_s": 2.605438086000504,
+      "generated_tokens": 64,
+      "hit_max_new_tokens": false,
+      "kept_visual_counts": [
+        14
+      ]
+    },
+    {
+      "index": 8,
+      "query": "Which answer response has the highest value on this graph?",
+      "labels": [
+        "Disapprove"
+      ],
+      "answer": "To determine which answer response has the highest value, I'll look for the point on the line graph that is furthest to the right. The highest point is in November 2014, where the line reaches its peak. Therefore, the answer response with the highest value is November 2014.\n\n<answer>November 2014</answer>",
+      "correct": false,
+      "latency_s": 3.1449288049989264,
+      "generated_tokens": 77,
+      "hit_max_new_tokens": false,
+      "kept_visual_counts": [
+        18
+      ]
+    },
+    {
+      "index": 9,
+      "query": "How many data points on the disapprove line are above 50?",
+      "labels": [
+        "2"
+      ],
+      "answer": "To determine how many data points on the disapprove line are above 50:\n\n1. Examine each point on the line:\n   - January: 40\n   - February: 43\n   - March: 49\n   - April: 44\n   - May: 43\n   - June: 44\n   - July: 43\n   - August: 44\n   - September: 43\n   - October: 44\n   - November: 43\n   - December: 44\n\n2. Count the points above 50:\n   - There are none.\n\nFinal Answer: 0",
+      "correct": true,
+      "latency_s": 5.872128520999468,
+      "generated_tokens": 145,
+      "hit_max_new_tokens": false,
+      "kept_visual_counts": [
+        18
+      ]
+    },
+    {
+      "index": 10,
+      "query": "Which indicator remains all time lowest from Dec. 2008 to Sep. 2011?",
+      "labels": [
+        "Mostly good news"
+      ],
+      "answer": "To determine which indicator remains all-time lowest from December 2008 to September 2011, I'll compare the values for each indicator over this period:\n\n1. For \"Mostly bad,\" the value starts at 31 in December 2008 and remains relatively low throughout the period.\n2. For \"Mostly good,\" the value starts at 5 in December 2008 and increases slightly but stays below 10.\n3. For \"Mixed,\" the value starts at 4 in December 2008 and fluctuates but generally stays above 3.\n\nComparing these, \"Mostly bad\" consistently has the lowest value across the entire period.\n\n<answer>Mostly bad</answer>",
+      "correct": false,
+      "latency_s": 6.1986484580011165,
+      "generated_tokens": 153,
+      "hit_max_new_tokens": false,
+      "kept_visual_counts": [
+        20
+      ]
+    },
+    {
+      "index": 11,
+      "query": "How much value of 'Mostly bad news' increased from Jan. 2011 to Sept. 2011?",
+      "labels": [
+        "37"
+      ],
+      "answer": "To find the increase in 'Mostly bad news', I'll calculate the difference between the values for September 2011 and January 2011:\n\nSeptember 2011: 46\nJanuary 2011: 31\n\nIncrease = 46 - 31 = 15\n\nTherefore, the value of 'Mostly bad news' increased by 15 units from January 2011 to September 2011.\n\n<answer>15</answer>",
+      "correct": false,
+      "latency_s": 4.472634296000251,
+      "generated_tokens": 110,
+      "hit_max_new_tokens": false,
+      "kept_visual_counts": [
+        20
+      ]
+    },
+    {
+      "index": 12,
+      "query": "When does the red line reach the peak?",
+      "labels": [
+        "44538"
+      ],
+      "answer": "To determine when the red line reaches its peak, I'll look for the highest point on the graph. The red line peaks in December 2011.",
+      "correct": false,
+      "latency_s": 1.4128070740007388,
+      "generated_tokens": 34,
+      "hit_max_new_tokens": false,
+      "kept_visual_counts": [
+        20
+      ]
+    },
+    {
+      "index": 13,
+      "query": "What's the total sum of peak points of all three lines?",
+      "labels": [
+        "155"
+      ],
+      "answer": "To find the total sum of peak points:\n1. Identify the highest point for each line.\n2. Add these peak points together.\n3. The total sum is 46 + 50 + 31 = 127.\n\n<answer>127</answer>",
+      "correct": false,
+      "latency_s": 2.406233515999702,
+      "generated_tokens": 59,
+      "hit_max_new_tokens": false,
+      "kept_visual_counts": [
+        20
+      ]
+    },
+    {
+      "index": 14,
+      "query": "When does the yellow line reach the peak?",
+      "labels": [
+        "44207"
+      ],
+      "answer": "The yellow line reaches its peak at the beginning of the timeline, specifically at the first data point.",
+      "correct": false,
+      "latency_s": 0.8825581319997582,
+      "generated_tokens": 21,
+      "hit_max_new_tokens": false,
+      "kept_visual_counts": [
+        20
+      ]
+    },
+    {
+      "index": 15,
+      "query": "What's the total sum of peak points of green and red lines?",
+      "labels": [
+        "87"
+      ],
+      "answer": "To find the total sum of peak points:\n1. Identify the highest point on the green line (67).\n2. Identify the highest point on the red line (46).\n3. Add these two values together: 67 + 46 = 113.\n\n<answer>113</answer>",
+      "correct": false,
+      "latency_s": 2.72858503200041,
+      "generated_tokens": 67,
+      "hit_max_new_tokens": false,
+      "kept_visual_counts": [
+        20
+      ]
+    }
+  ]
+}

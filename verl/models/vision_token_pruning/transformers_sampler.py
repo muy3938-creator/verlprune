@@ -153,6 +153,7 @@ def _select_dynamic(
             temperature=float(options.get("temperature", 0.1)),
             budget_mode=str(options.get("budget_mode", "fixed")),
             fixed_keep_ratio=state.config.keep_ratio,
+            top_p=float(options.get("top_p", 0.95)),
             min_keep_ratio=float(options.get("min_keep_ratio", 0.0)),
             max_keep_ratio=float(options.get("max_keep_ratio", 1.0)),
         )
@@ -323,7 +324,7 @@ def _make_attention_forward(
             key_states,
             cos,
             sin,
-            module.rope_scaling["mrope_section"],
+            getattr(module, "rope_scaling", module.config.rope_scaling)["mrope_section"],
         )
         if past_key_values is not None:
             key_states, value_states = past_key_values.update(
