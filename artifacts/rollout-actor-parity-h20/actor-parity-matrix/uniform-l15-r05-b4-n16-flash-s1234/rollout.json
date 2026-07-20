@@ -1,0 +1,234 @@
+{
+  "model_path": "/workspace/ckpts/Qwen2.5-VL-3B-Instruct",
+  "prompt": "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>Describe the two colored shapes from left to right in one short sentence.<|im_end|>\n<|im_start|>assistant\n",
+  "image_grid_thw": [
+    1,
+    16,
+    16
+  ],
+  "original_visual_tokens": 64,
+  "keep_ratio": 0.05,
+  "prune_after_layer": 15,
+  "batch_size": 4,
+  "response_length": 16,
+  "selector": "uniform",
+  "selector_input": "vision_embedding",
+  "selector_kwargs": {},
+  "pre_pruning_backend": "flash",
+  "temperature": 1.0,
+  "seed": 1234,
+  "samples": [
+    {
+      "sample_index": 0,
+      "image_path": "/workspace/results/actor-parity-matrix/uniform-l15-r05-b4-n16-flash-s1234/shapes-0.png",
+      "token_ids": [
+        785,
+        1290,
+        6083,
+        374,
+        13753,
+        323,
+        279,
+        2115,
+        9334,
+        374,
+        2518,
+        13,
+        576,
+        2115,
+        9334,
+        374
+      ],
+      "rollout_log_probs": [
+        -0.26557305455207825,
+        -7.070806503295898,
+        -0.5059272050857544,
+        -0.042110759764909744,
+        -2.769282102584839,
+        -0.8235617280006409,
+        -0.2699844241142273,
+        -0.03210706636309624,
+        -6.9277729988098145,
+        -0.06624066084623337,
+        -0.9096460342407227,
+        -0.07128144055604935,
+        -6.503856182098389,
+        -2.16351318359375,
+        -0.571968674659729,
+        -0.13321825861930847
+      ],
+      "generated_text": "The right shape is yellow and the left square is red. The left square is",
+      "selection": {
+        "version": 3,
+        "keep_ratio": 0.05,
+        "selector": "uniform",
+        "selector_fingerprint": "c1a333a953fdb82c74dedd2e635cdb0c802cedf5d9852183d50f33b87f6bae71",
+        "original_visual_token_count": 64,
+        "kept_visual_indices": [
+          0,
+          32,
+          63
+        ]
+      }
+    },
+    {
+      "sample_index": 1,
+      "image_path": "/workspace/results/actor-parity-matrix/uniform-l15-r05-b4-n16-flash-s1234/shapes-1.png",
+      "token_ids": [
+        785,
+        1290,
+        6083,
+        374,
+        13753,
+        323,
+        279,
+        2115,
+        9334,
+        374,
+        2518,
+        13,
+        576,
+        2115,
+        9334,
+        374
+      ],
+      "rollout_log_probs": [
+        -0.2656916081905365,
+        -6.980432033538818,
+        -0.5717397928237915,
+        -0.047698359936475754,
+        -2.6442389488220215,
+        -0.7627509832382202,
+        -0.27033016085624695,
+        -0.030920883640646935,
+        -7.053177833557129,
+        -0.07512301951646805,
+        -1.5602385997772217,
+        -0.0730396956205368,
+        -6.2545881271362305,
+        -2.1557440757751465,
+        -0.5740187168121338,
+        -0.12502418458461761
+      ],
+      "generated_text": "The right shape is yellow and the left square is red. The left square is",
+      "selection": {
+        "version": 3,
+        "keep_ratio": 0.05,
+        "selector": "uniform",
+        "selector_fingerprint": "c1a333a953fdb82c74dedd2e635cdb0c802cedf5d9852183d50f33b87f6bae71",
+        "original_visual_token_count": 64,
+        "kept_visual_indices": [
+          0,
+          32,
+          63
+        ]
+      }
+    },
+    {
+      "sample_index": 2,
+      "image_path": "/workspace/results/actor-parity-matrix/uniform-l15-r05-b4-n16-flash-s1234/shapes-2.png",
+      "token_ids": [
+        785,
+        1290,
+        6083,
+        374,
+        13753,
+        323,
+        279,
+        2115,
+        9334,
+        374,
+        2518,
+        13,
+        576,
+        2115,
+        9334,
+        374
+      ],
+      "rollout_log_probs": [
+        -0.2761492431163788,
+        -7.031283378601074,
+        -0.5485678315162659,
+        -0.04895120859146118,
+        -2.4391894340515137,
+        -0.8447761535644531,
+        -0.27745628356933594,
+        -0.03366294503211975,
+        -6.673577785491943,
+        -0.08093619346618652,
+        -1.7246880531311035,
+        -0.08571510761976242,
+        -6.378993511199951,
+        -2.1362500190734863,
+        -0.568508505821228,
+        -0.12361688166856766
+      ],
+      "generated_text": "The right shape is yellow and the left square is red. The left square is",
+      "selection": {
+        "version": 3,
+        "keep_ratio": 0.05,
+        "selector": "uniform",
+        "selector_fingerprint": "c1a333a953fdb82c74dedd2e635cdb0c802cedf5d9852183d50f33b87f6bae71",
+        "original_visual_token_count": 64,
+        "kept_visual_indices": [
+          0,
+          32,
+          63
+        ]
+      }
+    },
+    {
+      "sample_index": 3,
+      "image_path": "/workspace/results/actor-parity-matrix/uniform-l15-r05-b4-n16-flash-s1234/shapes-3.png",
+      "token_ids": [
+        785,
+        1290,
+        6083,
+        374,
+        13753,
+        323,
+        279,
+        2115,
+        9334,
+        374,
+        6303,
+        13,
+        576,
+        2115,
+        9334,
+        374
+      ],
+      "rollout_log_probs": [
+        -0.28977587819099426,
+        -6.999999046325684,
+        -0.5533047318458557,
+        -0.04230047017335892,
+        -2.74836802482605,
+        -0.795680582523346,
+        -0.2361055463552475,
+        -0.034208107739686966,
+        -6.79645299911499,
+        -0.09992668777704239,
+        -0.9514274001121521,
+        -0.06772966682910919,
+        -6.75309419631958,
+        -2.1035614013671875,
+        -0.6725239753723145,
+        -0.11750271916389465
+      ],
+      "generated_text": "The right shape is yellow and the left square is blue. The left square is",
+      "selection": {
+        "version": 3,
+        "keep_ratio": 0.05,
+        "selector": "uniform",
+        "selector_fingerprint": "c1a333a953fdb82c74dedd2e635cdb0c802cedf5d9852183d50f33b87f6bae71",
+        "original_visual_token_count": 64,
+        "kept_visual_indices": [
+          0,
+          32,
+          63
+        ]
+      }
+    }
+  ]
+}

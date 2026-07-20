@@ -1,0 +1,238 @@
+{
+  "model_path": "/workspace/ckpts/Qwen2.5-VL-3B-Instruct",
+  "prompt": "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>Describe the two colored shapes from left to right in one short sentence.<|im_end|>\n<|im_start|>assistant\n",
+  "image_grid_thw": [
+    1,
+    16,
+    16
+  ],
+  "original_visual_tokens": 64,
+  "pruning_enabled": true,
+  "keep_ratio": 0.05,
+  "prune_after_layer": 15,
+  "batch_size": 4,
+  "response_length": 16,
+  "selector": "dart",
+  "selector_input": "decoder_key",
+  "selector_kwargs": {
+    "pivot_image_tokens": 4,
+    "pivot_text_tokens": 4
+  },
+  "pre_pruning_backend": "flash",
+  "temperature": 1.0,
+  "seed": 1234,
+  "samples": [
+    {
+      "sample_index": 0,
+      "image_path": "/workspace/results/actor-parity-matrix/algorithm-dart-l15-r05-b4-n16-flash-s1234/shapes-0.png",
+      "token_ids": [
+        785,
+        1290,
+        6083,
+        374,
+        8131,
+        323,
+        52557,
+        1091,
+        279,
+        2115,
+        825,
+        13,
+        11733,
+        525,
+        25362,
+        11
+      ],
+      "rollout_log_probs": [
+        -0.2496018260717392,
+        -7.3153886795043945,
+        -0.4443092942237854,
+        -0.02308761700987816,
+        -3.5492606163024902,
+        -0.2513391673564911,
+        -5.080948352813721,
+        -0.4725504517555237,
+        -0.0017239484004676342,
+        -0.07286758720874786,
+        -1.0319339036941528,
+        -0.03881470859050751,
+        -8.626484870910645,
+        -1.5751943588256836,
+        -1.345644235610962,
+        -1.919368028640747
+      ],
+      "generated_text": "The right shape is larger and brighter than the left one. Both are circles,",
+      "selection": {
+        "version": 3,
+        "keep_ratio": 0.05,
+        "selector": "dart",
+        "selector_fingerprint": "cc83d5c211637c85aab8defe2bfc91422c89db3daf09e0e72865695e180eda5a",
+        "original_visual_token_count": 64,
+        "kept_visual_indices": [
+          7,
+          37,
+          63
+        ]
+      }
+    },
+    {
+      "sample_index": 1,
+      "image_path": "/workspace/results/actor-parity-matrix/algorithm-dart-l15-r05-b4-n16-flash-s1234/shapes-1.png",
+      "token_ids": [
+        785,
+        1290,
+        6083,
+        374,
+        13753,
+        323,
+        279,
+        2115,
+        9334,
+        374,
+        2518,
+        13,
+        576,
+        2115,
+        9334,
+        374
+      ],
+      "rollout_log_probs": [
+        -0.24836236238479614,
+        -8.050877571105957,
+        -0.3537026047706604,
+        -0.02005840837955475,
+        -2.9343461990356445,
+        -0.79115891456604,
+        -0.23284517228603363,
+        -0.03559162840247154,
+        -7.441417694091797,
+        -0.06439986824989319,
+        -1.769124150276184,
+        -0.08262302726507187,
+        -6.254765510559082,
+        -2.2585268020629883,
+        -0.5779796242713928,
+        -0.13754309713840485
+      ],
+      "generated_text": "The right shape is yellow and the left square is red. The left square is",
+      "selection": {
+        "version": 3,
+        "keep_ratio": 0.05,
+        "selector": "dart",
+        "selector_fingerprint": "cc83d5c211637c85aab8defe2bfc91422c89db3daf09e0e72865695e180eda5a",
+        "original_visual_token_count": 64,
+        "kept_visual_indices": [
+          20,
+          50,
+          63
+        ]
+      }
+    },
+    {
+      "sample_index": 2,
+      "image_path": "/workspace/results/actor-parity-matrix/algorithm-dart-l15-r05-b4-n16-flash-s1234/shapes-2.png",
+      "token_ids": [
+        785,
+        1290,
+        6083,
+        374,
+        18575,
+        323,
+        279,
+        2115,
+        374,
+        6303,
+        13,
+        220,
+        11733,
+        525,
+        25362,
+        13
+      ],
+      "rollout_log_probs": [
+        -0.22832638025283813,
+        -7.7695417404174805,
+        -0.34362247586250305,
+        -0.024209123104810715,
+        -1.066800594329834,
+        -0.9071232676506042,
+        -0.27162641286849976,
+        -0.037215493619441986,
+        -2.603898525238037,
+        -1.1450026035308838,
+        -0.05393724888563156,
+        -7.502882480621338,
+        -5.6790361404418945,
+        -0.8176493048667908,
+        -0.40389278531074524,
+        -0.22198273241519928
+      ],
+      "generated_text": "The right shape is orange and the left is blue.  Both are circles.",
+      "selection": {
+        "version": 3,
+        "keep_ratio": 0.05,
+        "selector": "dart",
+        "selector_fingerprint": "cc83d5c211637c85aab8defe2bfc91422c89db3daf09e0e72865695e180eda5a",
+        "original_visual_token_count": 64,
+        "kept_visual_indices": [
+          20,
+          50,
+          63
+        ]
+      }
+    },
+    {
+      "sample_index": 3,
+      "image_path": "/workspace/results/actor-parity-matrix/algorithm-dart-l15-r05-b4-n16-flash-s1234/shapes-3.png",
+      "token_ids": [
+        785,
+        1290,
+        6083,
+        374,
+        13753,
+        323,
+        279,
+        2115,
+        6083,
+        374,
+        2518,
+        13,
+        576,
+        2115,
+        6083,
+        374
+      ],
+      "rollout_log_probs": [
+        -0.24574585258960724,
+        -7.358096122741699,
+        -0.5772352814674377,
+        -0.024956559762358665,
+        -0.3763059079647064,
+        -0.938788115978241,
+        -0.17629893124103546,
+        -0.030246132984757423,
+        -0.13870225846767426,
+        -0.028811991214752197,
+        -1.9042308330535889,
+        -0.040388017892837524,
+        -6.877867698669434,
+        -2.2606701850891113,
+        -0.053225863724946976,
+        -0.17732051014900208
+      ],
+      "generated_text": "The right shape is yellow and the left shape is red. The left shape is",
+      "selection": {
+        "version": 3,
+        "keep_ratio": 0.05,
+        "selector": "dart",
+        "selector_fingerprint": "cc83d5c211637c85aab8defe2bfc91422c89db3daf09e0e72865695e180eda5a",
+        "original_visual_token_count": 64,
+        "kept_visual_indices": [
+          1,
+          38,
+          63
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,234 @@
+{
+  "model_path": "/workspace/ckpts/Qwen2.5-VL-3B-Instruct",
+  "prompt": "<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>Describe the two colored shapes from left to right in one short sentence.<|im_end|>\n<|im_start|>assistant\n",
+  "image_grid_thw": [
+    1,
+    16,
+    16
+  ],
+  "original_visual_tokens": 64,
+  "keep_ratio": 0.05,
+  "prune_after_layer": 7,
+  "batch_size": 4,
+  "response_length": 16,
+  "selector": "uniform",
+  "selector_input": "vision_embedding",
+  "selector_kwargs": {},
+  "pre_pruning_backend": "flash",
+  "temperature": 1.0,
+  "seed": 1234,
+  "samples": [
+    {
+      "sample_index": 0,
+      "image_path": "/workspace/results/actor-parity-matrix/uniform-l7-r05-b4-n16-flash-s1234/shapes-0.png",
+      "token_ids": [
+        785,
+        1290,
+        6083,
+        374,
+        8131,
+        323,
+        52557,
+        1091,
+        279,
+        2115,
+        825,
+        13,
+        11733,
+        525,
+        76192,
+        11
+      ],
+      "rollout_log_probs": [
+        -0.21120302379131317,
+        -7.146732330322266,
+        -0.7855148911476135,
+        -0.039923422038555145,
+        -3.701127529144287,
+        -0.3594585359096527,
+        -5.135085105895996,
+        -0.3162482976913452,
+        -0.001657304004766047,
+        -0.05885797739028931,
+        -1.2812846899032593,
+        -0.04596085846424103,
+        -9.126164436340332,
+        -1.683215618133545,
+        -1.8024110794067383,
+        -1.8320844173431396
+      ],
+      "generated_text": "The right shape is larger and brighter than the left one. Both are rectangles,",
+      "selection": {
+        "version": 3,
+        "keep_ratio": 0.05,
+        "selector": "uniform",
+        "selector_fingerprint": "c1a333a953fdb82c74dedd2e635cdb0c802cedf5d9852183d50f33b87f6bae71",
+        "original_visual_token_count": 64,
+        "kept_visual_indices": [
+          0,
+          32,
+          63
+        ]
+      }
+    },
+    {
+      "sample_index": 1,
+      "image_path": "/workspace/results/actor-parity-matrix/uniform-l7-r05-b4-n16-flash-s1234/shapes-1.png",
+      "token_ids": [
+        785,
+        1290,
+        6083,
+        374,
+        8131,
+        323,
+        52557,
+        1091,
+        279,
+        2115,
+        825,
+        13,
+        11733,
+        525,
+        31340,
+        11
+      ],
+      "rollout_log_probs": [
+        -0.1874576359987259,
+        -7.187651634216309,
+        -0.813788115978241,
+        -0.045489393174648285,
+        -3.5827369689941406,
+        -0.37471258640289307,
+        -4.939929008483887,
+        -0.3193504810333252,
+        -0.0018260485958307981,
+        -0.059581879526376724,
+        -1.2759120464324951,
+        -0.05100858211517334,
+        -8.751453399658203,
+        -1.6896159648895264,
+        -1.2726538181304932,
+        -1.8058998584747314
+      ],
+      "generated_text": "The right shape is larger and brighter than the left one. Both are squares,",
+      "selection": {
+        "version": 3,
+        "keep_ratio": 0.05,
+        "selector": "uniform",
+        "selector_fingerprint": "c1a333a953fdb82c74dedd2e635cdb0c802cedf5d9852183d50f33b87f6bae71",
+        "original_visual_token_count": 64,
+        "kept_visual_indices": [
+          0,
+          32,
+          63
+        ]
+      }
+    },
+    {
+      "sample_index": 2,
+      "image_path": "/workspace/results/actor-parity-matrix/uniform-l7-r05-b4-n16-flash-s1234/shapes-2.png",
+      "token_ids": [
+        785,
+        1290,
+        6083,
+        374,
+        13753,
+        323,
+        279,
+        2115,
+        9334,
+        374,
+        2518,
+        13,
+        576,
+        2115,
+        9334,
+        374
+      ],
+      "rollout_log_probs": [
+        -0.20221464335918427,
+        -7.197779655456543,
+        -0.7848820686340332,
+        -0.0457216240465641,
+        -2.4317708015441895,
+        -0.682470977306366,
+        -0.2752383053302765,
+        -0.03564212843775749,
+        -6.810606002807617,
+        -0.09373985230922699,
+        -1.4955966472625732,
+        -0.07541833817958832,
+        -6.379077911376953,
+        -2.2606401443481445,
+        -0.531761109828949,
+        -0.1516345888376236
+      ],
+      "generated_text": "The right shape is yellow and the left square is red. The left square is",
+      "selection": {
+        "version": 3,
+        "keep_ratio": 0.05,
+        "selector": "uniform",
+        "selector_fingerprint": "c1a333a953fdb82c74dedd2e635cdb0c802cedf5d9852183d50f33b87f6bae71",
+        "original_visual_token_count": 64,
+        "kept_visual_indices": [
+          0,
+          32,
+          63
+        ]
+      }
+    },
+    {
+      "sample_index": 3,
+      "image_path": "/workspace/results/actor-parity-matrix/uniform-l7-r05-b4-n16-flash-s1234/shapes-3.png",
+      "token_ids": [
+        785,
+        1290,
+        6083,
+        374,
+        13753,
+        323,
+        279,
+        2115,
+        9334,
+        374,
+        2518,
+        13,
+        576,
+        2115,
+        9334,
+        374
+      ],
+      "rollout_log_probs": [
+        -0.21790984272956848,
+        -7.187824249267578,
+        -0.8457241654396057,
+        -0.038886260241270065,
+        -2.778430223464966,
+        -0.6696866750717163,
+        -0.25378528237342834,
+        -0.03179820999503136,
+        -6.568926811218262,
+        -0.089676134288311,
+        -1.6302995681762695,
+        -0.06942566484212875,
+        -6.628612041473389,
+        -2.298543691635132,
+        -0.5816267132759094,
+        -0.1372520625591278
+      ],
+      "generated_text": "The right shape is yellow and the left square is red. The left square is",
+      "selection": {
+        "version": 3,
+        "keep_ratio": 0.05,
+        "selector": "uniform",
+        "selector_fingerprint": "c1a333a953fdb82c74dedd2e635cdb0c802cedf5d9852183d50f33b87f6bae71",
+        "original_visual_token_count": 64,
+        "kept_visual_indices": [
+          0,
+          32,
+          63
+        ]
+      }
+    }
+  ]
+}

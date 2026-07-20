@@ -1,0 +1,62 @@
+{
+  "case": {
+    "keep_ratio": 0.05,
+    "prune_after_layer": 15,
+    "batch_size": 4,
+    "response_length": 16,
+    "selector": "greedy_prune",
+    "selector_input": "decoder_key",
+    "selector_kwargs": {
+      "similarity_threshold": 0.9
+    },
+    "pre_pruning_backend": "flash",
+    "temperature": 1.0,
+    "pruning_enabled": true
+  },
+  "metrics": {
+    "token_count": 64,
+    "response_length": 16,
+    "response_length_min": 16,
+    "response_length_max": 16,
+    "sampled_logprob_signed_diff_mean": 0.0015795853250892833,
+    "sampled_logprob_abs_diff_mean": 0.02133181349199731,
+    "sampled_logprob_abs_diff_p50": 0.00646519660949707,
+    "sampled_logprob_abs_diff_p95": 0.11102819442749023,
+    "sampled_logprob_abs_diff_p99": 0.14753150939941406,
+    "sampled_logprob_abs_diff_max": 0.14753150939941406,
+    "prefill_token_abs_diff_mean": 0.008405093103647232,
+    "decode_token_abs_diff_mean": 0.022193594851220647,
+    "probability_abs_diff_mean": 0.00548521981666648,
+    "probability_abs_diff_max": 0.031023781664374583,
+    "probability_pearson": 0.9996947342077275,
+    "direct_kl_sample_estimate": -0.0015795853250892833,
+    "k3_kl_sample_estimate": 0.0007837962183045062,
+    "token_importance_ratio_mean": 1.0023633815433939,
+    "token_importance_ratio_min": 0.8628352504725055,
+    "token_importance_ratio_max": 1.1399607626415842,
+    "fraction_ratio_outside_0_9_1_1": 0.0625,
+    "fraction_ratio_outside_0_8_1_2": 0.0,
+    "sequence_log_ratio_abs_mean": 0.11991330911405385,
+    "sequence_log_ratio_abs_max": 0.1685418440029025,
+    "fraction_abs_diff_gt_0_05": 0.125,
+    "fraction_abs_diff_gt_0_10": 0.0625,
+    "per_position_abs_diff_mean": [
+      0.008405093103647232,
+      0.07695567607879639,
+      0.03429003059864044,
+      0.0013031326234340668,
+      0.053360819816589355,
+      0.009028717875480652,
+      0.01869441196322441,
+      0.002217373810708523,
+      0.002027183771133423,
+      0.018119876505807042,
+      0.007211606949567795,
+      0.0007111961022019386,
+      0.0305558443069458,
+      0.03883892297744751,
+      0.02646353840827942,
+      0.013125590980052948
+    ]
+  }
+}
