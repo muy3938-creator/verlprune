@@ -1,3 +1,7 @@
+"""Hydra-facing config. Constructs and freezes PruningSpec — the real plan."""
+
+from __future__ import annotations
+
 import hashlib
 import json
 from collections.abc import Mapping
@@ -25,7 +29,7 @@ _RESERVED_SELECTOR_KWARGS = {
 
 
 def compute_selector_fingerprint(selector: str, selector_kwargs: Mapping[str, Any] | None = None) -> str:
-    """Return a stable identity for one fully configured selection strategy."""
+    """Stable identity for one fully configured policy."""
 
     normalized_name = selector.strip()
     if not normalized_name:
@@ -46,16 +50,85 @@ def compute_selector_fingerprint(selector: str, selector_kwargs: Mapping[str, An
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def _validate_policy_kwargs(selector: str, kwargs: Mapping[str, Any]) -> None:
+    """Fail fast on unknown / invalid policy options (no silent ignore)."""
+
+    if selector == "vision_pulse":
+        allowed = {
+            "budget_mode",
+            "temperature",
+            "top_p",
+            "budget_schedule",
+            "min_keep_ratio",
+            "max_keep_ratio",
+            "capture_capacity",
+        }
+        unknown = set(kwargs).difference(allowed)
+        if unknown:
+            raise ValueError(f"unsupported vision_pulse selector_kwargs: {sorted(unknown)}")
+        budget_mode = str(kwargs.get("budget_mode", "visual_mass"))
+        if budget_mode not in {"fixed", "visual_mass", "top_p"}:
+            raise ValueError("vision_pulse budget_mode must be 'fixed', 'visual_mass', or 'top_p'")
+        top_p = float(kwargs.get("top_p", 0.95))
+        if not 0.0 < top_p <= 1.0:
+            raise ValueError("vision_pulse top_p must be in (0, 1]")
+        schedule = kwargs.get("budget_schedule", ())
+        if schedule is None:
+            schedule = ()
+        if not isinstance(schedule, (list, tuple)) or not schedule:
+            if schedule not in ((), []):
+                raise ValueError("vision_pulse budget_schedule must be a non-empty list")
+        else:
+            schedule = tuple(float(value) for value in schedule)
+            if any(not 0.0 < value <= 1.0 for value in schedule):
+                raise ValueError("vision_pulse budget_schedule values must be in (0, 1]")
+        if float(kwargs.get("temperature", 0.1)) <= 0:
+            raise ValueError("vision_pulse temperature must be positive")
+        minimum = float(kwargs.get("min_keep_ratio", 0.0))
+        maximum = float(kwargs.get("max_keep_ratio", 1.0))
+        if not 0.0 <= minimum <= maximum <= 1.0:
+            raise ValueError("vision_pulse keep-ratio clamps must satisfy 0 <= min <= max <= 1")
+        if int(kwargs.get("capture_capacity", 64)) <= 0:
+            raise ValueError("vision_pulse capture_capacity must be positive")
+        return
+    if selector == "dart":
+        allowed = {"pivot_image_tokens", "pivot_text_tokens"}
+        unknown = set(kwargs).difference(allowed)
+        if unknown:
+            raise ValueError(f"unsupported dart selector_kwargs: {sorted(unknown)}")
+        image_pivots = kwargs.get("pivot_image_tokens", 4)
+        text_pivots = kwargs.get("pivot_text_tokens", 4)
+        if (
+            not isinstance(image_pivots, int)
+            or isinstance(image_pivots, bool)
+            or image_pivots <= 0
+            or not isinstance(text_pivots, int)
+            or isinstance(text_pivots, bool)
+            or text_pivots < 0
+        ):
+            raise ValueError("dart pivot counts must satisfy image > 0 and text >= 0")
+        return
+    if selector == "greedy_prune":
+        unknown = set(kwargs).difference({"similarity_threshold"})
+        if unknown:
+            raise ValueError(f"unsupported greedy_prune selector_kwargs: {sorted(unknown)}")
+        threshold = float(kwargs.get("similarity_threshold", 0.9))
+        if not -1.0 <= threshold <= 1.0:
+            raise ValueError("greedy_prune similarity_threshold must be in [-1, 1]")
+        return
+    if selector == "divprune" and kwargs:
+        raise ValueError(f"unsupported divprune selector_kwargs: {sorted(kwargs)}")
+
+
 @dataclass
 class VisionTokenPruningConfig:
-    """Backend-neutral visual-token pruning configuration.
+    """Flat fields for Hydra. Execution plan is ``self.spec`` (PruningSpec).
 
-    ``prune_after_layer=-1`` selects from visual embeddings immediately before
-    decoder layer 0. The physically compacted prompt and decode share the same
-    reduced KV cache. Non-negative values select the experimental layerwise
-    Attention/KV implementation and apply pruning starting at the next layer.
-    ``selector`` names the rollout-side algorithm; the actor only replays the
-    resulting indices and therefore stays independent of that algorithm.
+    Field meanings (map to stages, do not invent a second logic tree):
+
+    - ``prune_after_layer=-1`` + vision embeddings → ``physical_pre_decoder``
+    - ``prune_after_layer=L>=0`` → ``boundary_once`` or ``decode_query``
+    - ``prefill_keep_ratio`` set → two stages (prefill + decode_query)
     """
 
     enabled: bool = False
@@ -66,18 +139,10 @@ class VisionTokenPruningConfig:
     selector_input: str = "vision_embedding"
     selector: str = "embedding_norm"
     selector_kwargs: dict[str, Any] = field(default_factory=dict)
-    # Optional optimizer-step curriculum.  Rollout resolves the current ratio
-    # per request; the actor replays the returned exact indices.
     keep_ratio_schedule: dict[str, Any] = field(default_factory=dict)
-    # Optional first-stage physical pruning. When set together with
-    # decode_query/VisionPulse, ``keep_ratio`` is relative to this retained
-    # subset rather than to the original visual-token count.
     prefill_keep_ratio: float | None = None
     prefill_selector: str = "embedding_norm"
     prefill_selector_kwargs: dict[str, Any] = field(default_factory=dict)
-    # -1 physically compacts before decoder layer 0. A non-negative value
-    # keeps the complete paged KV cache and applies the first-stage subset as
-    # a static FlexAttention mask after that decoder layer.
     prefill_prune_after_layer: int = -1
 
     def __post_init__(self) -> None:
@@ -89,6 +154,7 @@ class VisionTokenPruningConfig:
         validate_keep_ratio_schedule(self.keep_ratio_schedule)
         self.prefill_selector = self.prefill_selector.strip()
         self.prefill_selector_kwargs = dict(self.prefill_selector_kwargs)
+
         if not 0.0 < self.keep_ratio <= 1.0:
             raise ValueError(f"vision token pruning keep_ratio must be in (0, 1], got {self.keep_ratio}")
         if self.enabled and self.keep_ratio == 1.0:
@@ -151,137 +217,69 @@ class VisionTokenPruningConfig:
                     f"prefill_selector={self.prefill_selector!r} cannot select from vision embeddings"
                 )
         if self.selector in {"dart", "greedy_prune"} and self.selector_input != "decoder_key":
-            raise ValueError(
-                f"selector={self.selector!r} requires selector_input='decoder_key'"
-            )
-        if self.selector_input == "decode_query":
-            allowed_dynamic_options = {
-                "budget_mode",
-                "temperature",
-                "top_p",
-                "budget_schedule",
-                "min_keep_ratio",
-                "max_keep_ratio",
-                "capture_capacity",
-            }
-            unknown = set(self.selector_kwargs).difference(allowed_dynamic_options)
-            if unknown:
-                raise ValueError(
-                    "unsupported vision_pulse selector_kwargs: "
-                    f"{sorted(unknown)}"
-                )
-            budget_mode = str(self.selector_kwargs.get("budget_mode", "visual_mass"))
-            if budget_mode not in {"fixed", "visual_mass", "top_p"}:
-                raise ValueError(
-                    "vision_pulse budget_mode must be 'fixed', 'visual_mass', or 'top_p'"
-                )
-            top_p = float(self.selector_kwargs.get("top_p", 0.95))
-            if not 0.0 < top_p <= 1.0:
-                raise ValueError("vision_pulse top_p must be in (0, 1]")
-            schedule = self.selector_kwargs.get("budget_schedule", ())
-            if schedule is None:
-                schedule = ()
-            if not isinstance(schedule, (list, tuple)) or not schedule:
-                if schedule not in ((), []):
-                    raise ValueError("vision_pulse budget_schedule must be a non-empty list")
-            else:
-                schedule = tuple(float(value) for value in schedule)
-                if any(not 0.0 < value <= 1.0 for value in schedule):
-                    raise ValueError("vision_pulse budget_schedule values must be in (0, 1]")
-            temperature = float(self.selector_kwargs.get("temperature", 0.1))
-            if temperature <= 0:
-                raise ValueError("vision_pulse temperature must be positive")
-            minimum = float(self.selector_kwargs.get("min_keep_ratio", 0.0))
-            maximum = float(self.selector_kwargs.get("max_keep_ratio", 1.0))
-            if not 0.0 <= minimum <= maximum <= 1.0:
-                raise ValueError(
-                    "vision_pulse keep-ratio clamps must satisfy 0 <= min <= max <= 1"
-                )
-            capture_capacity = int(self.selector_kwargs.get("capture_capacity", 64))
-            if capture_capacity <= 0:
-                raise ValueError("vision_pulse capture_capacity must be positive")
-        elif self.selector == "dart":
-            allowed_dart_options = {"pivot_image_tokens", "pivot_text_tokens"}
-            unknown = set(self.selector_kwargs).difference(allowed_dart_options)
-            if unknown:
-                raise ValueError(f"unsupported dart selector_kwargs: {sorted(unknown)}")
-            image_pivots = self.selector_kwargs.get("pivot_image_tokens", 4)
-            text_pivots = self.selector_kwargs.get("pivot_text_tokens", 4)
-            if (
-                not isinstance(image_pivots, int)
-                or isinstance(image_pivots, bool)
-                or image_pivots <= 0
-                or not isinstance(text_pivots, int)
-                or isinstance(text_pivots, bool)
-                or text_pivots < 0
-            ):
-                raise ValueError("dart pivot counts must satisfy image > 0 and text >= 0")
-        elif self.selector == "greedy_prune":
-            unknown = set(self.selector_kwargs).difference({"similarity_threshold"})
-            if unknown:
-                raise ValueError(
-                    f"unsupported greedy_prune selector_kwargs: {sorted(unknown)}"
-                )
-            threshold = float(self.selector_kwargs.get("similarity_threshold", 0.9))
-            if not -1.0 <= threshold <= 1.0:
-                raise ValueError("greedy_prune similarity_threshold must be in [-1, 1]")
-        elif self.selector == "divprune" and self.selector_kwargs:
-            raise ValueError(
-                f"unsupported divprune selector_kwargs: {sorted(self.selector_kwargs)}"
-            )
+            raise ValueError(f"selector={self.selector!r} requires selector_input='decoder_key'")
+
+        _validate_policy_kwargs(self.selector, self.selector_kwargs)
+        if self.prefill_keep_ratio is not None:
+            _validate_policy_kwargs(self.prefill_selector, self.prefill_selector_kwargs)
         compute_selector_fingerprint(self.selector, self.selector_kwargs)
         compute_selector_fingerprint(self.prefill_selector, self.prefill_selector_kwargs)
 
+        # Single source of truth for execution semantics.
+        from .stages import pruning_spec_from_legacy_config
+
+        object.__setattr__(self, "_spec", pruning_spec_from_legacy_config(self))
+
+    @property
+    def spec(self):
+        """Frozen PruningSpec — the only execution plan."""
+
+        return self._spec
+
+    def to_pruning_spec(self):
+        return self.spec
+
+    # --- derived from spec (no second validation matrix) ---
+
     @property
     def uses_layerwise_backend(self) -> bool:
-        return self.enabled and self.prune_after_layer >= 0
+        return self.spec.uses_layerwise_backend
 
     @property
     def uses_dynamic_decode_selection(self) -> bool:
-        return self.uses_layerwise_backend and self.selector_input == "decode_query"
+        return self.spec.uses_dynamic_decode_selection
 
     @property
     def uses_keep_ratio_schedule(self) -> bool:
-        return bool(self.keep_ratio_schedule)
+        return self.spec.uses_keep_ratio_schedule
 
     @property
     def uses_two_stage_pruning(self) -> bool:
-        return self.enabled and self.prefill_keep_ratio is not None
+        return self.spec.uses_two_stage_pruning
 
     @property
     def uses_physical_prefill_pruning(self) -> bool:
-        return self.uses_two_stage_pruning and self.prefill_prune_after_layer == -1
+        return self.spec.uses_physical_prefill_pruning
 
     @property
     def uses_delayed_prefill_pruning(self) -> bool:
-        return self.uses_two_stage_pruning and self.prefill_prune_after_layer >= 0
+        return self.spec.uses_delayed_prefill_pruning
 
     @property
     def backend_name(self) -> str:
-        if not self.uses_layerwise_backend:
-            return "prefill_physical_shared_kv"
-        if self.uses_two_stage_pruning:
-            if self.uses_physical_prefill_pruning:
-                return "prefill_physical_then_dynamic_decode_flex"
-            return "prefill_mask_then_dynamic_decode_flex"
-        return f"layerwise_{self.layerwise_backend}"
+        return self.spec.backend_name
 
     @property
     def selection_layer(self) -> int:
         """User-facing boundary; zero means immediately before decoder layer 0."""
 
-        return 0 if not self.uses_layerwise_backend else self.prune_after_layer
+        if not self.uses_layerwise_backend:
+            return 0
+        return self.prune_after_layer
 
     @property
     def selector_fingerprint(self) -> str:
         return compute_selector_fingerprint(self.selector, self.selector_kwargs)
-
-    def to_pruning_spec(self):
-        """Explicit three-stage experiment plan. Prefer this for new code."""
-
-        from .stages import pruning_spec_from_legacy_config
-
-        return pruning_spec_from_legacy_config(self)
 
     def to_backend_payload(self) -> dict[str, Any]:
         payload = {
@@ -305,8 +303,6 @@ class VisionTokenPruningConfig:
 
 
 def coerce_vision_token_pruning_config(value: Any) -> VisionTokenPruningConfig:
-    """Normalize Hydra/dict/dataclass inputs at integration boundaries."""
-
     if value is None:
         return VisionTokenPruningConfig()
     if isinstance(value, VisionTokenPruningConfig):

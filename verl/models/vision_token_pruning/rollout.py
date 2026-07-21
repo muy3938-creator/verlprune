@@ -1,4 +1,4 @@
-"""Framework-neutral policy for wiring visual-token pruning into a rollout server."""
+"""Rollout façade: launch, request checks, capture decode. Driven by PruningSpec."""
 
 from __future__ import annotations
 
@@ -25,13 +25,13 @@ class VisionTokenPruningRollout:
         image_token_id: int | None,
     ) -> None:
         self.config = coerce_vision_token_pruning_config(config)
+        self.spec = self.config.spec
         self.model_type = model_type
         self.image_token_id = image_token_id
-        self.spec = self.config.to_pruning_spec()
 
     @property
     def enabled(self) -> bool:
-        return self.config.enabled
+        return self.spec.enabled
 
     def build_launch_options(self, *, routing_replay_enabled: bool) -> VllmPruningLaunchOptions:
         return build_vllm_pruning_launch_options(
@@ -47,8 +47,6 @@ class VisionTokenPruningRollout:
         image_data: list[Any] | None,
         video_data: list[Any] | None,
     ) -> int | None:
-        """Validate a request and return its expanded image-token count."""
-
         if not self.enabled:
             return None
         if image_data is None or len(image_data) != 1 or video_data is not None:
@@ -79,8 +77,9 @@ class VisionTokenPruningRollout:
         if original_token_count is None:
             raise RuntimeError("missing original image-token count for a pruned rollout")
         effective_keep_ratio = self.config.keep_ratio if keep_ratio is None else float(keep_ratio)
-        if self.config.uses_two_stage_pruning:
-            assert self.config.prefill_keep_ratio is not None
+        if self.spec.uses_two_stage_pruning:
+            if self.config.prefill_keep_ratio is None:
+                raise RuntimeError("two-stage pruning missing prefill_keep_ratio")
             return decode_vllm_two_stage_selection_capture(
                 routed_experts,
                 prefill_keep_ratio=self.config.prefill_keep_ratio,
@@ -90,19 +89,17 @@ class VisionTokenPruningRollout:
                 decode_selector=self.config.selector,
                 decode_selector_kwargs=self.config.selector_kwargs,
             ).to_wire()
-        decoder = (
-            decode_vllm_dynamic_selection_capture
-            if self.config.uses_dynamic_decode_selection
-            else decode_vllm_selection_capture
-        )
-        ratio_name = (
-            "nominal_keep_ratio"
-            if self.config.uses_dynamic_decode_selection
-            else "keep_ratio"
-        )
-        return decoder(
+        if self.spec.uses_dynamic_decode_selection:
+            return decode_vllm_dynamic_selection_capture(
+                routed_experts,
+                nominal_keep_ratio=effective_keep_ratio,
+                original_visual_token_count=original_token_count,
+                selector=self.config.selector,
+                selector_kwargs=self.config.selector_kwargs,
+            ).to_wire()
+        return decode_vllm_selection_capture(
             routed_experts,
-            **{ratio_name: effective_keep_ratio},
+            keep_ratio=effective_keep_ratio,
             original_visual_token_count=original_token_count,
             selector=self.config.selector,
             selector_kwargs=self.config.selector_kwargs,

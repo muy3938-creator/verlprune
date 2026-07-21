@@ -1,3 +1,12 @@
+"""Visual-token pruning platform.
+
+Public surface for experiments and training:
+
+- ``VisionTokenPruningConfig`` / ``PruningSpec`` — experiment plan
+- ``VisionTokenSelectionRequest`` + policy registry — algorithms
+- ``prepare_actor_pruning_inputs`` / transport — training wire (import from submodules)
+"""
+
 from .config import VisionTokenPruningConfig, compute_selector_fingerprint
 from .protocol import DynamicVisionTokenSelection, TwoStageVisionTokenSelection, VisionTokenSelection
 from .request import VisionTokenSelectionRequest

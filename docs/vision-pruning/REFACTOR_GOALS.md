@@ -63,3 +63,8 @@ Two-stage experiments = **ordered list of stages**, not a third protocol type.
 | 2026-07-22 00:15 | H20 physical e2e train step PASS (loss finite, grad≠0) | done |
 | 2026-07-22 00:15 | Full unit suite 1039 passed / 1 skipped | done |
 | 2026-07-22 00:15 | Commit `642f8f0` on `refactor/three-stage-pruning-api` | done |
+| 2026-07-22 07:30 | Correct direction: PruningSpec is execution authority | done |
+| 2026-07-22 07:32 | Config.mode flags derive from `config.spec` only | done |
+| 2026-07-22 07:35 | Rollout uses `self.spec` for decode branch | done |
+| 2026-07-22 07:36 | PLATFORM.md mental model | done |
+| 2026-07-22 07:37 | Unit suite 1040 passed after platform unify | done |

@@ -18,8 +18,11 @@ from verl.models.vision_token_pruning.stages import (
 
 def test_physical_legacy_config_maps_to_single_physical_stage():
     config = VisionTokenPruningConfig(enabled=True, keep_ratio=0.25)
-    spec = config.to_pruning_spec()
+    spec = config.spec
 
+    assert spec is config.to_pruning_spec()
+    assert config.uses_layerwise_backend is False
+    assert config.backend_name == "prefill_physical_shared_kv"
     assert spec.enabled
     assert spec.runtime is RuntimeKind.PHYSICAL_FIXED
     assert len(spec.stages) == 1
@@ -29,6 +32,29 @@ def test_physical_legacy_config_maps_to_single_physical_stage():
     assert stage.policy == "embedding_norm"
     assert stage.keep_ratio == 0.25
     assert stage.observe_layer is None
+
+
+def test_config_mode_flags_are_derived_from_spec_not_reimplemented():
+    boundary = VisionTokenPruningConfig(
+        enabled=True,
+        keep_ratio=0.5,
+        prune_after_layer=15,
+        selector="uniform",
+    )
+    assert boundary.spec.uses_boundary_once
+    assert boundary.uses_layerwise_backend
+    assert boundary.backend_name == "layerwise_flex"
+
+    dynamic = VisionTokenPruningConfig(
+        enabled=True,
+        keep_ratio=0.05,
+        prune_after_layer=15,
+        selector="vision_pulse",
+        selector_input="decode_query",
+    )
+    assert dynamic.spec.uses_decode_query
+    assert dynamic.uses_dynamic_decode_selection
+
 
 
 def test_boundary_once_legacy_maps_observe_and_apply_layers():

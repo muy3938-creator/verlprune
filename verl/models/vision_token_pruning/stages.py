@@ -1,7 +1,7 @@
-"""Canonical three-stage experiment model for visual-token pruning.
+"""Platform execution model: three stage kinds + one PruningSpec.
 
-Algorithms declare a policy. Experiments declare one or more stages.
-Runtimes only observe tensors, invoke the policy, and apply the decision.
+This is the single source of truth for what an experiment means.
+Hydra/YAML only constructs a PruningSpec; runtimes consult the spec.
 """
 
 from __future__ import annotations
@@ -9,22 +9,21 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
-from .config import VisionTokenPruningConfig, compute_selector_fingerprint
+from .config import compute_selector_fingerprint
+
+if TYPE_CHECKING:
+    from .config import VisionTokenPruningConfig
 
 
 class StageKind(str, Enum):
-    """The only three selection semantics the platform supports."""
-
     PHYSICAL_PRE_DECODER = "physical_pre_decoder"
     BOUNDARY_ONCE = "boundary_once"
     DECODE_QUERY = "decode_query"
 
 
 class InputKind(str, Enum):
-    """Tensors a policy is allowed to require."""
-
     VISION_EMBEDDING = "vision_embedding"
     BOUNDARY_QKV = "boundary_qkv"
     DECODE_QK = "decode_qk"
@@ -35,22 +34,22 @@ class RuntimeKind(str, Enum):
     FLEX_MASK = "flex_mask"
 
 
-_LEGACY_SELECTOR_INPUT_TO_INPUT_KIND = {
-    "vision_embedding": InputKind.VISION_EMBEDDING,
-    "decoder_key": InputKind.BOUNDARY_QKV,
-    "decode_query": InputKind.DECODE_QK,
-}
-
-_INPUT_KIND_ALLOWED_BY_STAGE = {
+_INPUT_BY_STAGE = {
     StageKind.PHYSICAL_PRE_DECODER: {InputKind.VISION_EMBEDDING},
     StageKind.BOUNDARY_ONCE: {InputKind.VISION_EMBEDDING, InputKind.BOUNDARY_QKV},
     StageKind.DECODE_QUERY: {InputKind.DECODE_QK},
 }
 
+_LEGACY_INPUT = {
+    "vision_embedding": InputKind.VISION_EMBEDDING,
+    "decoder_key": InputKind.BOUNDARY_QKV,
+    "decode_query": InputKind.DECODE_QK,
+}
+
 
 @dataclass(frozen=True)
 class StageSpec:
-    """One observe → decide → apply stage."""
+    """One observe → decide → apply step."""
 
     kind: StageKind
     policy: str
@@ -73,21 +72,16 @@ class StageSpec:
         object.__setattr__(self, "policy_kwargs", dict(self.policy_kwargs))
         if not 0.0 < self.keep_ratio < 1.0:
             raise ValueError(f"stage keep_ratio must be in (0, 1), got {self.keep_ratio}")
-        if self.input_kind not in _INPUT_KIND_ALLOWED_BY_STAGE[self.kind]:
+        if self.input_kind not in _INPUT_BY_STAGE[self.kind]:
             raise ValueError(
-                f"stage kind {self.kind.value!r} cannot use input_kind={self.input_kind.value!r}"
+                f"stage {self.kind.value!r} cannot use input_kind={self.input_kind.value!r}"
             )
         if self.kind is StageKind.PHYSICAL_PRE_DECODER:
             if self.observe_layer is not None or self.apply_from_layer is not None:
-                raise ValueError(
-                    "physical_pre_decoder forbids observe_layer/apply_from_layer; "
-                    "selection happens before decoder layer 0"
-                )
+                raise ValueError("physical_pre_decoder forbids observe/apply layers")
             return
         if self.observe_layer is None or self.apply_from_layer is None:
-            raise ValueError(
-                f"{self.kind.value} requires explicit observe_layer and apply_from_layer"
-            )
+            raise ValueError(f"{self.kind.value} requires observe_layer and apply_from_layer")
         if self.observe_layer < 0:
             raise ValueError(f"{self.kind.value} observe_layer must be >= 0")
         if self.apply_from_layer != self.observe_layer + 1:
@@ -103,7 +97,7 @@ class StageSpec:
 
 @dataclass(frozen=True)
 class PruningSpec:
-    """Immutable experiment plan resolved once at worker init."""
+    """Immutable experiment plan. Execution code should only consult this object."""
 
     enabled: bool
     stages: tuple[StageSpec, ...]
@@ -124,147 +118,175 @@ class PruningSpec:
         if not self.stages:
             raise ValueError("enabled PruningSpec requires at least one stage")
         if len(self.stages) > 2:
-            raise ValueError("at most two stages are supported (static/boundary + decode_query)")
-        kinds = [stage.kind for stage in self.stages]
+            raise ValueError("at most two stages supported")
+        kinds = [s.kind for s in self.stages]
         if kinds.count(StageKind.DECODE_QUERY) > 1:
-            raise ValueError("at most one decode_query stage is allowed")
+            raise ValueError("at most one decode_query stage")
         if StageKind.DECODE_QUERY in kinds and kinds[-1] is not StageKind.DECODE_QUERY:
-            raise ValueError("decode_query must be the final stage when present")
+            raise ValueError("decode_query must be the final stage")
         if kinds.count(StageKind.PHYSICAL_PRE_DECODER) > 1:
-            raise ValueError("at most one physical_pre_decoder stage is allowed")
+            raise ValueError("at most one physical_pre_decoder stage")
         if kinds.count(StageKind.BOUNDARY_ONCE) > 1:
-            raise ValueError("at most one boundary_once stage is allowed")
+            raise ValueError("at most one boundary_once stage")
         if (
             StageKind.PHYSICAL_PRE_DECODER in kinds
             and StageKind.BOUNDARY_ONCE in kinds
-            and len(kinds) == 2
             and StageKind.DECODE_QUERY not in kinds
         ):
-            raise ValueError(
-                "physical_pre_decoder + boundary_once without decode_query is unsupported"
-            )
+            raise ValueError("physical_pre_decoder + boundary_once requires decode_query")
+
         if self.runtime is RuntimeKind.PHYSICAL_FIXED:
-            if any(stage.kind is not StageKind.PHYSICAL_PRE_DECODER for stage in self.stages):
-                raise ValueError("runtime=physical_fixed only supports physical_pre_decoder stages")
+            if any(s.kind is not StageKind.PHYSICAL_PRE_DECODER for s in self.stages):
+                raise ValueError("runtime=physical_fixed only supports physical_pre_decoder")
             if self.keep_ratio_schedule:
                 raise ValueError(
-                    "runtime=physical_fixed rejects keep_ratio_schedule; "
-                    "physical layout is fixed at engine launch"
+                    "physical_fixed rejects keep_ratio_schedule "
+                    "(layout fixed at engine launch; use flex_mask)"
                 )
             if self.pre_pruning_backend != "flex":
-                raise ValueError("runtime=physical_fixed rejects pre_pruning_backend overrides")
-        if self.runtime is RuntimeKind.FLEX_MASK:
-            if any(stage.kind is StageKind.PHYSICAL_PRE_DECODER for stage in self.stages) and not (
-                len(self.stages) == 2 and self.stages[0].kind is StageKind.PHYSICAL_PRE_DECODER
+                raise ValueError("physical_fixed rejects pre_pruning_backend")
+            return
+
+        # flex_mask
+        if self.layerwise_backend not in {"flex", "compact_flash"}:
+            raise ValueError("layerwise_backend must be 'flex' or 'compact_flash'")
+        if self.pre_pruning_backend not in {"flex", "flash"}:
+            raise ValueError("pre_pruning_backend must be 'flex' or 'flash'")
+        if self.pre_pruning_backend == "flash" and self.layerwise_backend != "flex":
+            raise ValueError("pre_pruning_backend='flash' requires layerwise_backend='flex'")
+        if any(s.kind is StageKind.PHYSICAL_PRE_DECODER for s in self.stages):
+            if not (
+                len(self.stages) == 2
+                and self.stages[0].kind is StageKind.PHYSICAL_PRE_DECODER
+                and self.stages[1].kind is StageKind.DECODE_QUERY
             ):
-                # physical prefill + flex decode is the only mixed case
-                if not (
-                    len(self.stages) == 2
-                    and self.stages[0].kind is StageKind.PHYSICAL_PRE_DECODER
-                    and self.stages[1].kind is StageKind.DECODE_QUERY
-                ):
-                    raise ValueError(
-                        "flex_mask may combine physical_pre_decoder only as stage-0 of two-stage "
-                        "physical-prefill + decode_query"
-                    )
-            if self.layerwise_backend not in {"flex", "compact_flash"}:
-                raise ValueError("layerwise_backend must be 'flex' or 'compact_flash'")
-            if self.pre_pruning_backend not in {"flex", "flash"}:
-                raise ValueError("pre_pruning_backend must be 'flex' or 'flash'")
-            if self.pre_pruning_backend == "flash" and self.layerwise_backend != "flex":
-                raise ValueError("pre_pruning_backend='flash' requires layerwise_backend='flex'")
-            if any(stage.kind is StageKind.DECODE_QUERY for stage in self.stages):
-                if self.layerwise_backend != "flex":
-                    raise ValueError("decode_query requires layerwise_backend='flex'")
-            if any(stage.input_kind is InputKind.BOUNDARY_QKV for stage in self.stages):
-                if self.layerwise_backend != "flex":
-                    raise ValueError("boundary_qkv requires layerwise_backend='flex'")
-        if self.keep_ratio_schedule and self.runtime is not RuntimeKind.FLEX_MASK:
-            raise ValueError("keep_ratio_schedule requires runtime=flex_mask")
+                raise ValueError(
+                    "flex_mask allows physical_pre_decoder only as stage-0 of "
+                    "physical-prefill + decode_query"
+                )
+        if self.uses_decode_query and self.layerwise_backend != "flex":
+            raise ValueError("decode_query requires layerwise_backend='flex'")
+        if any(s.input_kind is InputKind.BOUNDARY_QKV for s in self.stages):
+            if self.layerwise_backend != "flex":
+                raise ValueError("boundary_qkv requires layerwise_backend='flex'")
         if self.keep_ratio_schedule and self.layerwise_backend != "flex":
             raise ValueError("keep_ratio_schedule requires layerwise_backend='flex'")
 
-    @property
-    def primary_stage(self) -> StageSpec:
-        if not self.enabled or not self.stages:
-            raise ValueError("disabled PruningSpec has no primary stage")
-        if self.stages[-1].kind is StageKind.DECODE_QUERY and len(self.stages) > 1:
-            return self.stages[-1]
-        return self.stages[0]
+    # --- execution predicates (used by rollout / actor / plugins) ---
 
     @property
-    def uses_physical_pre_decoder(self) -> bool:
-        return any(stage.kind is StageKind.PHYSICAL_PRE_DECODER for stage in self.stages)
-
-    @property
-    def uses_boundary_once(self) -> bool:
-        return any(stage.kind is StageKind.BOUNDARY_ONCE for stage in self.stages)
+    def uses_layerwise_backend(self) -> bool:
+        return self.enabled and self.runtime is RuntimeKind.FLEX_MASK
 
     @property
     def uses_decode_query(self) -> bool:
-        return any(stage.kind is StageKind.DECODE_QUERY for stage in self.stages)
+        return any(s.kind is StageKind.DECODE_QUERY for s in self.stages)
+
+    @property
+    def uses_dynamic_decode_selection(self) -> bool:
+        return self.uses_decode_query
+
+    @property
+    def uses_boundary_once(self) -> bool:
+        return any(s.kind is StageKind.BOUNDARY_ONCE for s in self.stages)
+
+    @property
+    def uses_physical_pre_decoder(self) -> bool:
+        return any(s.kind is StageKind.PHYSICAL_PRE_DECODER for s in self.stages)
 
     @property
     def uses_two_stage(self) -> bool:
         return len(self.stages) == 2
 
     @property
+    def uses_two_stage_pruning(self) -> bool:
+        return self.uses_two_stage
+
+    @property
+    def uses_physical_prefill_pruning(self) -> bool:
+        return (
+            self.uses_two_stage
+            and self.stages[0].kind is StageKind.PHYSICAL_PRE_DECODER
+        )
+
+    @property
+    def uses_delayed_prefill_pruning(self) -> bool:
+        return self.uses_two_stage and self.stages[0].kind is StageKind.BOUNDARY_ONCE
+
+    @property
+    def uses_keep_ratio_schedule(self) -> bool:
+        return bool(self.keep_ratio_schedule)
+
+    @property
     def decode_stage(self) -> StageSpec | None:
-        for stage in self.stages:
-            if stage.kind is StageKind.DECODE_QUERY:
-                return stage
+        for s in self.stages:
+            if s.kind is StageKind.DECODE_QUERY:
+                return s
         return None
 
     @property
     def prefill_stage(self) -> StageSpec | None:
-        if not self.uses_two_stage:
-            return None
+        return self.stages[0] if self.uses_two_stage else None
+
+    @property
+    def primary_stage(self) -> StageSpec:
+        if not self.enabled or not self.stages:
+            raise ValueError("disabled PruningSpec has no primary stage")
+        if self.uses_two_stage and self.stages[-1].kind is StageKind.DECODE_QUERY:
+            return self.stages[-1]
         return self.stages[0]
+
+    @property
+    def backend_name(self) -> str:
+        if not self.enabled:
+            return "disabled"
+        if self.runtime is RuntimeKind.PHYSICAL_FIXED:
+            return "prefill_physical_shared_kv"
+        if self.uses_two_stage:
+            if self.uses_physical_prefill_pruning:
+                return "prefill_physical_then_dynamic_decode_flex"
+            return "prefill_mask_then_dynamic_decode_flex"
+        return f"layerwise_{self.layerwise_backend}"
 
 
 def pruning_spec_from_legacy_config(config: VisionTokenPruningConfig) -> PruningSpec:
-    """Translate the historical flat config into explicit stages.
-
-    Ambiguous or unsupported combinations raise. Nothing is inferred beyond the
-    documented meaning of the legacy fields.
-    """
+    """Build the platform plan from flat Hydra fields. Fail on ambiguity."""
 
     if not config.enabled:
         return PruningSpec(enabled=False, stages=(), runtime=RuntimeKind.PHYSICAL_FIXED)
 
     if config.prefill_keep_ratio is not None:
-        return _two_stage_from_legacy(config)
+        return _two_stage(config)
 
     if config.prune_after_layer < 0:
         if config.selector_input != "vision_embedding":
             raise ValueError(
-                "legacy physical pruning (prune_after_layer=-1) requires "
-                "selector_input='vision_embedding'"
+                "physical_pre_decoder requires selector_input='vision_embedding'"
             )
         if config.selector == "vision_pulse":
             raise ValueError("vision_pulse cannot run as physical_pre_decoder")
         if config.keep_ratio_schedule:
             raise ValueError(
-                "physical_pre_decoder rejects keep_ratio_schedule; "
-                "physical layout is fixed at engine launch (use boundary_once/flex_mask)"
+                "physical_pre_decoder rejects keep_ratio_schedule; use boundary_once/flex_mask"
             )
-        stage = StageSpec(
-            kind=StageKind.PHYSICAL_PRE_DECODER,
-            policy=config.selector,
-            keep_ratio=config.keep_ratio,
-            input_kind=InputKind.VISION_EMBEDDING,
-            policy_kwargs=config.selector_kwargs,
-            name="physical_pre_decoder",
-        )
         return PruningSpec(
             enabled=True,
-            stages=(stage,),
             runtime=RuntimeKind.PHYSICAL_FIXED,
+            stages=(
+                StageSpec(
+                    kind=StageKind.PHYSICAL_PRE_DECODER,
+                    policy=config.selector,
+                    keep_ratio=config.keep_ratio,
+                    input_kind=InputKind.VISION_EMBEDDING,
+                    policy_kwargs=config.selector_kwargs,
+                    name="physical_pre_decoder",
+                ),
+            ),
         )
 
-    input_kind = _LEGACY_SELECTOR_INPUT_TO_INPUT_KIND.get(config.selector_input)
+    input_kind = _LEGACY_INPUT.get(config.selector_input)
     if input_kind is None:
-        raise ValueError(f"unsupported legacy selector_input={config.selector_input!r}")
+        raise ValueError(f"unsupported selector_input={config.selector_input!r}")
 
     if config.selector_input == "decode_query":
         stage = StageSpec(
@@ -290,26 +312,25 @@ def pruning_spec_from_legacy_config(config: VisionTokenPruningConfig) -> Pruning
         )
     return PruningSpec(
         enabled=True,
-        stages=(stage,),
         runtime=RuntimeKind.FLEX_MASK,
+        stages=(stage,),
         keep_ratio_schedule=config.keep_ratio_schedule,
         layerwise_backend=config.layerwise_backend,  # type: ignore[arg-type]
         pre_pruning_backend=config.pre_pruning_backend,  # type: ignore[arg-type]
     )
 
 
-def _two_stage_from_legacy(config: VisionTokenPruningConfig) -> PruningSpec:
+def _two_stage(config: VisionTokenPruningConfig) -> PruningSpec:
     if config.prefill_keep_ratio is None:
-        raise ValueError("two-stage translation requires prefill_keep_ratio")
+        raise ValueError("two-stage requires prefill_keep_ratio")
     if config.prune_after_layer < 0:
-        raise ValueError("two-stage pruning requires prune_after_layer >= 0")
+        raise ValueError("two-stage requires prune_after_layer >= 0")
     if config.selector_input != "decode_query" or config.selector != "vision_pulse":
         raise ValueError(
-            "legacy two-stage pruning requires selector_input='decode_query' "
-            "and selector='vision_pulse'"
+            "two-stage requires selector_input='decode_query' and selector='vision_pulse'"
         )
     if config.layerwise_backend != "flex":
-        raise ValueError("legacy two-stage pruning requires layerwise_backend='flex'")
+        raise ValueError("two-stage requires layerwise_backend='flex'")
 
     if config.prefill_prune_after_layer < 0:
         prefill = StageSpec(
@@ -346,8 +367,8 @@ def _two_stage_from_legacy(config: VisionTokenPruningConfig) -> PruningSpec:
     )
     return PruningSpec(
         enabled=True,
-        stages=(prefill, decode),
         runtime=RuntimeKind.FLEX_MASK,
+        stages=(prefill, decode),
         keep_ratio_schedule=config.keep_ratio_schedule,
         layerwise_backend=config.layerwise_backend,  # type: ignore[arg-type]
         pre_pruning_backend=config.pre_pruning_backend,  # type: ignore[arg-type]
@@ -355,8 +376,6 @@ def _two_stage_from_legacy(config: VisionTokenPruningConfig) -> PruningSpec:
 
 
 def stage_specs_from_mapping(stages: Sequence[Mapping[str, Any]]) -> tuple[StageSpec, ...]:
-    """Build stages from a YAML/dict list. Every required field must be present."""
-
     if not stages:
         raise ValueError("stages must be a non-empty list")
     built: list[StageSpec] = []
