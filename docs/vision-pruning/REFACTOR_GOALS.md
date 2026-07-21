@@ -57,4 +57,9 @@ Two-stage experiments = **ordered list of stages**, not a third protocol type.
 | 2026-07-22 00:00 | Unit suite on H20: **1039 passed** | done |
 | 2026-07-22 00:01 | Fail-fast: schedule without global_step | done |
 | 2026-07-22 00:02 | Flex `plan.py` + `observe.py` extracted | done |
-| 2026-07-22 00:05 | GPU logit parity blocked: workspace reclaim + entry_point install | in progress |
+| 2026-07-22 00:05 | GPU logit parity blocked: workspace reclaim + entry_point install | recovered |
+| 2026-07-22 00:12 | H20 Flex vs Transformers mask: LOGIT_PARITY_COMPARE=PASS | done |
+| 2026-07-22 00:14 | H20 physical e2e rollout PASS (64→32) | done |
+| 2026-07-22 00:15 | H20 physical e2e train step PASS (loss finite, grad≠0) | done |
+| 2026-07-22 00:15 | Full unit suite 1039 passed / 1 skipped | done |
+| 2026-07-22 00:15 | Commit `642f8f0` on `refactor/three-stage-pruning-api` | done |
