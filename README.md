@@ -1,5 +1,8 @@
 # Vision-OPD
 
+For the explicit ChartQA data-processing and fixed-teacher training workflow,
+see [`docs/chartvqa-opd-training/README.md`](docs/chartvqa-opd-training/README.md).
+
 **Vision-OPD: Learning to See Fine-Grained Details for Multimodal LLMs via On-Policy Self-Distillation**
 
 <p align="center">

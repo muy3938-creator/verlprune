@@ -188,7 +188,12 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
 
         self.ulysses_sharding_manager = FSDPUlyssesShardingManager(self.ulysses_device_mesh)
         self._lora_rank = self.config.model.get("lora_rank", 0)
-        self._is_lora = self.config.model.get("lora_adapter_path") is not None or self._lora_rank > 0
+        explicit_use_lora = self.config.model.get("use_lora", None)
+        self._is_lora = (
+            bool(explicit_use_lora)
+            if explicit_use_lora is not None
+            else self.config.model.get("lora_adapter_path") is not None or self._lora_rank > 0
+        )
 
         self.role = role
         assert self.role in ["actor", "rollout", "ref", "actor_rollout", "actor_rollout_ref"]
@@ -466,6 +471,15 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
                     "bias": "none",
                 }
                 actor_module = get_peft_model(actor_module, LoraConfig(**lora_config))
+
+        # A fixed self-distillation teacher is inference-only.  It is loaded
+        # from its own checkpoint and deliberately has no trainable parameters;
+        # no optimizer is created for role="teacher" below, but freezing here
+        # also prevents accidental gradients or future optimizer wiring from
+        # changing its weights.
+        if role == "teacher":
+            actor_module.requires_grad_(False)
+            actor_module.eval()
 
         self.use_orig_params = fsdp_config.get("use_orig_params", False)
         if self.config.actor.get("freeze_vision_tower", False):
@@ -1317,8 +1331,11 @@ class CriticWorker(Worker, DistProfilerExtension):
                 f"normalized ppo_mini_batch_size {self.config.ppo_mini_batch_size} should be larger than "
                 f"ppo_micro_batch_size_per_gpu {self.config.ppo_micro_batch_size_per_gpu}"
             )
+        explicit_use_lora = self.config.model.get("use_lora", None)
         self._is_lora = (
-            self.config.model.get("lora_adapter_path") is not None or self.config.model.get("lora_rank", 0) > 0
+            bool(explicit_use_lora)
+            if explicit_use_lora is not None
+            else self.config.model.get("lora_adapter_path") is not None or self.config.model.get("lora_rank", 0) > 0
         )
         self.use_orig_params = self.config.model.fsdp_config.get("use_orig_params", False)
 

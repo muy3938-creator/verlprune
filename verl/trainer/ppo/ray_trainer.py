@@ -390,10 +390,14 @@ class RayPPOTrainer:
         )
 
         # if ref_in_actor is True, the reference policy will be actor without lora applied
-        lora_rank = config.actor_rollout_ref.model.get("lora", {}).get("rank", 0)
-        if lora_rank <= 0:
-            lora_rank = config.actor_rollout_ref.model.get("lora_rank", 0)
-        self.ref_in_actor = lora_rank > 0 or config.actor_rollout_ref.model.get("lora_adapter_path") is not None
+        explicit_use_lora = config.actor_rollout_ref.model.get("use_lora", None)
+        if explicit_use_lora is None:
+            lora_rank = config.actor_rollout_ref.model.get("lora", {}).get("rank", 0)
+            if lora_rank <= 0:
+                lora_rank = config.actor_rollout_ref.model.get("lora_rank", 0)
+            self.ref_in_actor = lora_rank > 0 or config.actor_rollout_ref.model.get("lora_adapter_path") is not None
+        else:
+            self.ref_in_actor = bool(explicit_use_lora)
 
         # define in-reward KL control
         # kl loss control currently not suppoorted
@@ -1033,6 +1037,17 @@ class RayPPOTrainer:
                         rope_index_signature = None
                     if rope_index_signature is None or "second_per_grid_ts" in rope_index_signature.parameters:
                         rope_index_kwargs["second_per_grid_ts"] = teacher_multi_modal_inputs.get("second_per_grid_ts")
+                    if rope_index_signature is not None and "mm_token_type_ids" in rope_index_signature.parameters:
+                        mm_token_type_ids = teacher_multi_modal_inputs.pop("mm_token_type_ids", None)
+                        if mm_token_type_ids is None:
+                            mm_token_type_ids = torch.zeros_like(prompt_input_ids).unsqueeze(0)
+                            mm_token_type_ids[0][prompt_input_ids == self.processor.image_token_id] = 1
+                            video_token_id = getattr(self.processor, "video_token_id", None)
+                            if video_token_id is not None:
+                                mm_token_type_ids[0][prompt_input_ids == video_token_id] = 2
+                        rope_index_kwargs["input_ids"] = prompt_input_ids.unsqueeze(0)
+                        rope_index_kwargs["attention_mask"] = prompt_attention_mask.unsqueeze(0)
+                        rope_index_kwargs["mm_token_type_ids"] = mm_token_type_ids
 
                     try:
                         prompt_position_ids = self.processor.get_rope_index(**rope_index_kwargs)

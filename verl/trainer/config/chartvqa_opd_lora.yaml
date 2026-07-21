@@ -1,0 +1,31 @@
+defaults:
+  - vision_pruning_experiment
+  - _self_
+
+# Daily ChartQA research preset: explicit LoRA student and frozen teacher.
+actor_rollout_ref:
+  model:
+    use_lora: true
+    lora_rank: 8
+    lora_alpha: 16
+    lora_adapter_path: null
+    vision_token_pruning:
+      keep_ratio: 0.10
+      selector: random
+      selector_input: vision_embedding
+      selector_kwargs: {}
+      prefill_keep_ratio: null
+      prefill_selector: random
+      prefill_prune_after_layer: -1
+      prune_after_layer: 0
+  actor:
+    optim:
+      lr: 1.0e-5
+    self_distillation:
+      teacher_always_on: true
+      teacher_model_source: fixed
+      teacher_model_path: ${actor_rollout_ref.model.path}
+      teacher_image_key: teacher_images
+      teacher_prompt_mode: null
+      teacher_update_rate: 0.0
+      fallback_to_policy_loss_on_missing_teacher: false

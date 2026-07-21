@@ -150,10 +150,14 @@ class TaskRunner:
             actor_rollout_cls = ActorRolloutRefWorker
             ray_worker_group_cls = RayWorkerGroup
 
-            lora_rank = config.actor_rollout_ref.model.get("lora", {}).get("rank", 0)
-            if lora_rank <= 0:
-                lora_rank = config.actor_rollout_ref.model.get("lora_rank", 0)
-            ref_in_actor = lora_rank > 0 or config.actor_rollout_ref.model.get("lora_adapter_path") is not None
+            explicit_use_lora = config.actor_rollout_ref.model.get("use_lora", None)
+            if explicit_use_lora is None:
+                lora_rank = config.actor_rollout_ref.model.get("lora", {}).get("rank", 0)
+                if lora_rank <= 0:
+                    lora_rank = config.actor_rollout_ref.model.get("lora_rank", 0)
+                ref_in_actor = lora_rank > 0 or config.actor_rollout_ref.model.get("lora_adapter_path") is not None
+            else:
+                ref_in_actor = bool(explicit_use_lora)
             # NOTE: In new model engine, ref policy and actor rollout are in same ActorRolloutRefWorker,
             # while in legacy model engine, ref policy is in a separate ActorRolloutRefWorker.
             if need_reference_policy(config) and not ref_in_actor:

@@ -3,6 +3,7 @@
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+CONFIG_NAME="${CONFIG_NAME:-vision_pruning_experiment}"
 MODEL_PATH="${MODEL_PATH:-/tmp/Qwen2.5-VL-3B-Instruct}"
 TRAIN_FILE="${TRAIN_FILE:-/tmp/opd_data/train.parquet}"
 OUTPUT_DIR="${OUTPUT_DIR:-/tmp/vision_pruning_experiment}"
@@ -46,7 +47,7 @@ if [[ "${PREFILL_KEEP_RATIO}" != "none" && -n "${PREFILL_SELECTOR_KWARGS}" ]]; t
     STRATEGY_ARGS+=("++actor_rollout_ref.model.vision_token_pruning.prefill_selector_kwargs=${PREFILL_SELECTOR_KWARGS}")
 fi
 
-python3 -m verl.trainer.main_ppo --config-name vision_pruning_experiment \
+python3 -m verl.trainer.main_ppo --config-name "${CONFIG_NAME}" \
     "data.train_files=[\"${TRAIN_FILE}\"]" \
     "data.val_files=[]" \
     "actor_rollout_ref.model.path=${MODEL_PATH}" \

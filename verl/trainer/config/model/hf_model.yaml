@@ -42,6 +42,9 @@ enable_activation_offload: False
 # whether to use remove padding. Only valid when we use hf model definition
 use_remove_padding: True
 
+# Explicit LoRA switch. Null derives the legacy behavior from rank or adapter path.
+use_lora: null
+
 # Set to positive value to enable LoRA (e.g., 32)
 lora_rank: 0
 

@@ -84,6 +84,10 @@ class HFModelConfig(BaseConfig):
 
     # TODO: unify fsdp and megatron lora config
     # fsdp lora related. We may setup a separate config later
+    # Explicit override for experiments that need an unambiguous LoRA policy.
+    # When null, retain legacy rank/adapter-path inference.
+    use_lora: Optional[bool] = None
+
     lora_rank: int = 0
     lora_alpha: int = 16
     target_modules: Optional[str] = "all-linear"
