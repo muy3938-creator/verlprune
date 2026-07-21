@@ -2,22 +2,28 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from verl.models.vision_token_pruning.protocol import decode_rollout_selection  # noqa: E402
-from verl.models.vision_token_pruning.runtime import (  # noqa: E402
+from verl.models.vision_token_pruning.embeddings import (  # noqa: E402
     KEEP_MASK_KEY,
-    attach_selection_to_multi_modal_inputs,
     prune_visual_embeddings,
+)
+from verl.models.vision_token_pruning.protocol import decode_rollout_selection  # noqa: E402
+from verl.models.vision_token_pruning.request import VisionTokenSelectionRequest  # noqa: E402
+from verl.models.vision_token_pruning.strategy import run_vision_token_strategy  # noqa: E402
+from verl.models.vision_token_pruning.training import (  # noqa: E402
+    attach_selection_to_multi_modal_inputs,
     replay_rollout_selection_on_attention_mask,
 )
-from verl.models.vision_token_pruning.selectors import select_random_visual_tokens  # noqa: E402
 
 
 def test_rollout_to_actor_physical_pruning_supports_a_backward_step():
-    kept_indices = select_random_visual_tokens(
-        6,
-        3,
-        device=torch.device("cpu"),
-        generator=torch.Generator().manual_seed(11),
+    kept_indices = run_vision_token_strategy(
+        "random",
+        VisionTokenSelectionRequest(
+            token_count=6,
+            keep_count=3,
+            device=torch.device("cpu"),
+            generator=torch.Generator().manual_seed(11),
+        ),
     )
     routed_experts = [[[index + 1]] for index in kept_indices.tolist()]
     selection = decode_rollout_selection(

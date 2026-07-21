@@ -430,13 +430,11 @@ def run_train_step(output_dir: Path, learning_rate: float, steps: int) -> None:
         VisionTokenSelection,
         selection_from_wire,
     )
-    from verl.models.vision_token_pruning.runtime import (
-        KEEP_MASK_KEY,
-        attach_selection_to_multi_modal_inputs,
-        replay_rollout_selection_on_attention_mask,
-    )
+    from verl.models.vision_token_pruning.embeddings import KEEP_MASK_KEY
     from verl.models.vision_token_pruning.training import (
+        attach_selection_to_multi_modal_inputs,
         replay_dynamic_rollout_selection,
+        replay_rollout_selection_on_attention_mask,
         replay_two_stage_rollout_selection,
     )
 

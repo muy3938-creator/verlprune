@@ -24,11 +24,22 @@ Two-stage experiments = **two stages in order**, not a fourth kind.
 ## Single source of truth
 
 ```python
-spec = config.to_pruning_spec()   # == config.spec
-# runtime / rollout / validation all reason about spec.stages
+spec = config.spec   # frozen PruningSpec
+# backends / rollout / actor / validation all reason about spec
 ```
 
 `VisionTokenPruningConfig` keeps flat Hydra fields for existing launchers. On init it **builds and freezes** `PruningSpec`. Mode flags (`uses_*`) are derived from the spec, not re-implemented.
+
+Package layout (no dual facades):
+
+| Module | Role |
+|---|---|
+| `stages.py` | StageKind + PruningSpec (plan) |
+| `config.py` | Hydra fields → PruningSpec |
+| `policies/` + `strategy.py` | algorithms |
+| `training.py` + `embeddings.py` | actor replay / teacher strip / physical compact |
+| `rollout.py` + `backends.py` + `transport.py` | vLLM launch + capture decode |
+| `protocol.py` | wire records |
 
 ## Algorithm surface
 

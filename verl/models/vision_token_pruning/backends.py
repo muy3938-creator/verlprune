@@ -69,11 +69,16 @@ LAYERWISE_COMPACT_FLASH_BACKEND = VllmPruningBackendProfile(
 
 
 def resolve_vllm_backend(config: VisionTokenPruningConfig) -> VllmPruningBackendProfile:
-    if not config.uses_layerwise_backend:
+    """Map PruningSpec.runtime (+ optional compact_flash research flag) to a plugin."""
+
+    spec = config.spec
+    if not spec.enabled or not spec.uses_layerwise_backend:
         return PHYSICAL_BACKEND
-    if config.layerwise_backend == "flex":
+    if spec.layerwise_backend == "flex":
         return LAYERWISE_FLEX_BACKEND
-    return LAYERWISE_COMPACT_FLASH_BACKEND
+    if spec.layerwise_backend == "compact_flash":
+        return LAYERWISE_COMPACT_FLASH_BACKEND
+    raise ValueError(f"unsupported layerwise_backend={spec.layerwise_backend!r}")
 
 
 def build_vllm_pruning_launch_options(
@@ -82,22 +87,21 @@ def build_vllm_pruning_launch_options(
     model_type: str,
     routing_replay_enabled: bool,
 ) -> VllmPruningLaunchOptions:
-    if not config.enabled:
+    spec = config.spec
+    if not spec.enabled:
         return VllmPruningLaunchOptions(hf_overrides={}, cli_args={})
     if routing_replay_enabled:
         raise ValueError("vision token pruning cannot share routed_experts with rollout routing replay")
 
     backend = resolve_vllm_backend(config)
-    physical_keep_ratio = (
-        config.prefill_keep_ratio
-        if config.uses_physical_prefill_pruning
-        else (
-            1.0 - DELAYED_PREFILL_METADATA_PRUNING_RATE
-            if config.uses_delayed_prefill_pruning
-            else config.keep_ratio
-        )
-    )
-    assert physical_keep_ratio is not None
+    if spec.uses_physical_prefill_pruning:
+        physical_keep_ratio = config.prefill_keep_ratio
+    elif spec.uses_delayed_prefill_pruning:
+        physical_keep_ratio = 1.0 - DELAYED_PREFILL_METADATA_PRUNING_RATE
+    else:
+        physical_keep_ratio = config.keep_ratio
+    if physical_keep_ratio is None:
+        raise ValueError("resolved physical_keep_ratio is missing")
     cli_args: dict[str, Any] = {
         "video_pruning_rate": 1.0 - physical_keep_ratio,
         "limit_mm_per_prompt": {"image": 1, "video": 0},
@@ -112,11 +116,11 @@ def build_vllm_pruning_launch_options(
     if backend is LAYERWISE_FLEX_BACKEND:
         cli_args["attention_config"] = {"backend": "FLEX_ATTENTION"}
     capture_capacity = 1
-    if config.uses_dynamic_decode_selection:
+    if spec.uses_dynamic_decode_selection:
         capture_capacity = int(config.selector_kwargs.get("capture_capacity", 64))
         if capture_capacity <= 0:
             raise ValueError("dynamic visual selection capture_capacity must be positive")
-        if config.uses_two_stage_pruning and capture_capacity < 3:
+        if spec.uses_two_stage_pruning and capture_capacity < 3:
             raise ValueError("two-stage selection capture_capacity must be at least 3")
     return VllmPruningLaunchOptions(
         hf_overrides={

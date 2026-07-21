@@ -62,7 +62,7 @@ def test_legacy_module_strategy_remains_compatible():
     )
 
     selected = run_vision_token_strategy(
-        "verl.models.vision_token_pruning.selectors:select_uniform_visual_tokens",
+        "verl.models.vision_token_pruning.policies.uniform:uniform_policy",
         request,
     )
 

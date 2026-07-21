@@ -130,12 +130,14 @@ def prepare_actor_pruning_inputs(
                 for inputs in per_sample_multi_modal_inputs
             ],
         )
-    if not config.enabled:
+    spec = config.spec
+    if not spec.enabled:
         raise ValueError("cannot apply visual-token pruning when it is disabled in the actor config")
     if image_token_id is None:
         raise ValueError("vision token pruning requires model.config.image_token_id")
 
-    if config.uses_two_stage_pruning:
+    # Branch on platform stage plan (single source of truth).
+    if spec.uses_two_stage_pruning:
         prefill_attention_mask, layerwise_attention_mask, dynamic_attention_mask = replay_two_stage_rollout_selection(
             input_ids,
             attention_mask,
@@ -148,7 +150,7 @@ def prepare_actor_pruning_inputs(
             per_sample_multi_modal_inputs=[
                 (
                     strip_pruning_metadata(inputs)
-                    if config.uses_delayed_prefill_pruning
+                    if spec.uses_delayed_prefill_pruning
                     else strip_selection_metadata(inputs)
                 )
                 if inputs is not None
@@ -159,14 +161,14 @@ def prepare_actor_pruning_inputs(
             dynamic_layerwise_attention_mask=dynamic_attention_mask,
         )
 
-    if config.uses_dynamic_decode_selection:
+    if spec.uses_dynamic_decode_selection:
         dynamic_attention_mask = replay_dynamic_rollout_selection(
             input_ids,
             attention_mask,
             per_sample_multi_modal_inputs,
             image_token_id=image_token_id,
             expected_keep_ratio=(
-                None if config.uses_keep_ratio_schedule else config.keep_ratio
+                None if spec.uses_keep_ratio_schedule else config.keep_ratio
             ),
             expected_selector=config.selector,
             expected_selector_kwargs=config.selector_kwargs,
@@ -185,11 +187,11 @@ def prepare_actor_pruning_inputs(
         attention_mask,
         per_sample_multi_modal_inputs,
         image_token_id=image_token_id,
-        expected_keep_ratio=(None if config.uses_keep_ratio_schedule else config.keep_ratio),
+        expected_keep_ratio=(None if spec.uses_keep_ratio_schedule else config.keep_ratio),
         expected_selector=config.selector,
         expected_selector_kwargs=config.selector_kwargs,
     )
-    if config.uses_layerwise_backend:
+    if spec.uses_layerwise_backend:
         return PreparedActorPruningInputs(
             attention_mask=attention_mask,
             per_sample_multi_modal_inputs=[

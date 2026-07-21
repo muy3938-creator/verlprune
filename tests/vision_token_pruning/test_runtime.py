@@ -10,16 +10,18 @@ from verl.models.vision_token_pruning.protocol import (  # noqa: E402
     DynamicVisionTokenSelection,
     VisionTokenSelection,
 )
-from verl.models.vision_token_pruning.runtime import (  # noqa: E402
+from verl.models.vision_token_pruning.embeddings import (  # noqa: E402
     KEEP_MASK_KEY,
-    attach_selection_to_multi_modal_inputs,
-    prepare_actor_pruning_inputs,
     prune_visual_embeddings,
+)
+from verl.models.vision_token_pruning.training import (  # noqa: E402
+    attach_selection_to_multi_modal_inputs,
+    pack_dynamic_attention_mask,
+    prepare_actor_pruning_inputs,
     replay_rollout_selection_on_attention_mask,
     strip_pruning_metadata,
     strip_selection_metadata,
 )
-from verl.models.vision_token_pruning.training import pack_dynamic_attention_mask  # noqa: E402
 
 
 def test_rollout_selection_physically_compacts_actor_tokens_and_features():
