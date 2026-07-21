@@ -500,6 +500,10 @@ Risk: low.
   `teacher_image_key=images` alias is structurally safer than maintaining
   duplicate `teacher_prompt`/`teacher_images` columns; retain duplicate columns
   only as a compatibility export for existing data.
+- Replace broad `pkill -f raylet|vllm|main_ppo` cleanup with ownership-aware
+  process-group cleanup. Record the PIDs/process group started by this launcher
+  and use `ray stop --force` only as a scoped fallback; never risk killing an
+  unrelated shared-card job.
 
 Expected benefit: the main review surface drops immediately, with no change to
 rollout outputs, actor masks, or OPD loss.
