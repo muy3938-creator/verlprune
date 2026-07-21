@@ -276,6 +276,13 @@ class VisionTokenPruningConfig:
     def selector_fingerprint(self) -> str:
         return compute_selector_fingerprint(self.selector, self.selector_kwargs)
 
+    def to_pruning_spec(self):
+        """Explicit three-stage experiment plan. Prefer this for new code."""
+
+        from .stages import pruning_spec_from_legacy_config
+
+        return pruning_spec_from_legacy_config(self)
+
     def to_backend_payload(self) -> dict[str, Any]:
         payload = {
             "keep_ratio": self.keep_ratio,

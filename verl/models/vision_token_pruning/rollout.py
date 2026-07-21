@@ -27,6 +27,7 @@ class VisionTokenPruningRollout:
         self.config = coerce_vision_token_pruning_config(config)
         self.model_type = model_type
         self.image_token_id = image_token_id
+        self.spec = self.config.to_pruning_spec()
 
     @property
     def enabled(self) -> bool:

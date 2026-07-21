@@ -25,6 +25,17 @@ def test_piecewise_keep_ratio_schedule_interpolates_and_clamps():
     assert resolve_keep_ratio(schedule, 500, fallback=0.05) == pytest.approx(0.05)
 
 
+def test_schedule_without_global_step_fails_fast():
+    schedule = {"milestones": [[0, 0.50], [80, 0.10]]}
+    with pytest.raises(ValueError, match="global_step is missing"):
+        resolve_keep_ratio(schedule, None, fallback=0.05)
+
+
+def test_empty_schedule_uses_fallback_without_step():
+    assert resolve_keep_ratio({}, None, fallback=0.42) == 0.42
+    assert resolve_keep_ratio(None, None, fallback=0.42) == 0.42
+
+
 def test_schedule_is_carried_to_vllm_payload():
     config = VisionTokenPruningConfig(
         enabled=True,

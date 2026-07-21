@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import torch
 
-from verl.models.vision_token_pruning.strategy import VisionTokenSelectionRequest
+from verl.models.vision_token_pruning.request import VisionTokenSelectionRequest
 
 
 def feature_norm(request: VisionTokenSelectionRequest) -> torch.Tensor:

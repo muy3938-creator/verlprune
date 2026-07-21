@@ -70,8 +70,13 @@ def resolve_keep_ratio(
     """
 
     milestones = _parse_milestones(schedule)
-    if not milestones or global_step is None:
+    if not milestones:
         return float(fallback)
+    if global_step is None:
+        raise ValueError(
+            "keep_ratio_schedule is configured but global_step is missing; "
+            "refusing silent fallback"
+        )
     step = max(0, int(global_step))
     if step <= milestones[0][0]:
         return milestones[0][1]

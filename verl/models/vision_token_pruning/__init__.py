@@ -1,19 +1,20 @@
 from .config import VisionTokenPruningConfig, compute_selector_fingerprint
 from .protocol import DynamicVisionTokenSelection, TwoStageVisionTokenSelection, VisionTokenSelection
-from .selectors import (
-    available_vision_token_selectors,
-    register_vision_token_selector,
-    select_visual_tokens,
-)
+from .request import VisionTokenSelectionRequest
+from .stages import InputKind, PruningSpec, RuntimeKind, StageKind, StageSpec, pruning_spec_from_legacy_config
 from .strategy import (
     VisionTokenSelectionEngine,
-    VisionTokenSelectionRequest,
     available_vision_token_strategies,
     register_vision_token_strategy,
     run_vision_token_strategy,
 )
 
 __all__ = [
+    "InputKind",
+    "PruningSpec",
+    "RuntimeKind",
+    "StageKind",
+    "StageSpec",
     "VisionTokenPruningConfig",
     "VisionTokenSelectionEngine",
     "VisionTokenSelectionRequest",
@@ -21,10 +22,8 @@ __all__ = [
     "DynamicVisionTokenSelection",
     "TwoStageVisionTokenSelection",
     "available_vision_token_strategies",
-    "available_vision_token_selectors",
     "compute_selector_fingerprint",
-    "register_vision_token_selector",
+    "pruning_spec_from_legacy_config",
     "register_vision_token_strategy",
     "run_vision_token_strategy",
-    "select_visual_tokens",
 ]
