@@ -14,6 +14,7 @@ actor_rollout_ref:
       selector: random
       selector_input: vision_embedding
       selector_kwargs: {}
+      keep_ratio_schedule: {}
       prefill_keep_ratio: null
       prefill_selector: random
       prefill_prune_after_layer: -1

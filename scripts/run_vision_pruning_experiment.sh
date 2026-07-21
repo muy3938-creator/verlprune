@@ -10,6 +10,7 @@ OUTPUT_DIR="${OUTPUT_DIR:-/tmp/vision_pruning_experiment}"
 KEEP_RATIO="${KEEP_RATIO:-0.5}"
 SELECTOR="${SELECTOR:-vision_pulse}"
 SELECTOR_KWARGS="${SELECTOR_KWARGS:-}"
+KEEP_RATIO_SCHEDULE="${KEEP_RATIO_SCHEDULE:-}"
 PREFILL_KEEP_RATIO="${PREFILL_KEEP_RATIO:-0.5}"
 PREFILL_SELECTOR="${PREFILL_SELECTOR:-embedding_norm}"
 PREFILL_SELECTOR_KWARGS="${PREFILL_SELECTOR_KWARGS:-}"
@@ -30,6 +31,12 @@ export VLLM_WORKER_MULTIPROC_METHOD=spawn
 export RAY_DEDUP_LOGS=0
 
 STRATEGY_ARGS=()
+CURRICULUM_ARGS=()
+if [[ -n "${KEEP_RATIO_SCHEDULE}" ]]; then
+    CURRICULUM_ARGS+=(
+        "actor_rollout_ref.model.vision_token_pruning.keep_ratio_schedule=${KEEP_RATIO_SCHEDULE}"
+    )
+fi
 PREFILL_ARGS=()
 if [[ -n "${SELECTOR_KWARGS}" ]]; then
     STRATEGY_ARGS+=("++actor_rollout_ref.model.vision_token_pruning.selector_kwargs=${SELECTOR_KWARGS}")
@@ -57,6 +64,7 @@ python3 -m verl.trainer.main_ppo --config-name "${CONFIG_NAME}" \
     "actor_rollout_ref.model.vision_token_pruning.selector_input=${SELECTOR_INPUT}" \
     "actor_rollout_ref.model.vision_token_pruning.pre_pruning_backend=${PRE_PRUNING_BACKEND}" \
     "actor_rollout_ref.model.vision_token_pruning.prune_after_layer=${PRUNE_AFTER_LAYER}" \
+    "${CURRICULUM_ARGS[@]}" \
     "${STRATEGY_ARGS[@]}" \
     "trainer.total_training_steps=${TOTAL_TRAINING_STEPS}" \
     "trainer.save_freq=${SAVE_FREQ}" \

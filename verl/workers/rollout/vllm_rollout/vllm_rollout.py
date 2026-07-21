@@ -244,6 +244,16 @@ class vLLMAsyncRollout(BaseRollout):
         self.inference_engine.load_model(*args, **kwargs)
         _monkey_patch_compute_logits(self.inference_engine.worker.model_runner.model, len(self.tokenizer))
 
+    def set_vision_token_pruning_keep_ratio(self, keep_ratio: float) -> None:
+        """Update the lightweight per-step pruning budget on the vLLM model."""
+
+        model = self.inference_engine.worker.model_runner.model
+        model = getattr(model, "module", model)
+        setter = getattr(model, "set_vision_token_pruning_keep_ratio", None)
+        if setter is None:
+            raise RuntimeError("the active vLLM model does not support a runtime pruning budget")
+        setter(float(keep_ratio))
+
     async def _execute_method(self, method: str | bytes, *args, **kwargs):
         if method == "init_worker":
             return self._init_worker(*args, **kwargs)

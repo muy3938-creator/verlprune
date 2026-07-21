@@ -165,7 +165,9 @@ def prepare_actor_pruning_inputs(
             attention_mask,
             per_sample_multi_modal_inputs,
             image_token_id=image_token_id,
-            expected_keep_ratio=config.keep_ratio,
+            expected_keep_ratio=(
+                None if config.uses_keep_ratio_schedule else config.keep_ratio
+            ),
             expected_selector=config.selector,
             expected_selector_kwargs=config.selector_kwargs,
         )
@@ -183,7 +185,7 @@ def prepare_actor_pruning_inputs(
         attention_mask,
         per_sample_multi_modal_inputs,
         image_token_id=image_token_id,
-        expected_keep_ratio=config.keep_ratio,
+        expected_keep_ratio=(None if config.uses_keep_ratio_schedule else config.keep_ratio),
         expected_selector=config.selector,
         expected_selector_kwargs=config.selector_kwargs,
     )
@@ -211,7 +213,7 @@ def replay_rollout_selection_on_attention_mask(
     per_sample_multi_modal_inputs: list[dict[str, Any] | None],
     *,
     image_token_id: int,
-    expected_keep_ratio: float,
+    expected_keep_ratio: float | None,
     expected_selector: str = "random",
     expected_selector_kwargs: dict[str, Any] | None = None,
 ) -> torch.Tensor:
@@ -232,7 +234,7 @@ def replay_rollout_selection_on_attention_mask(
 
         keep_mask = multi_modal_inputs[KEEP_MASK_KEY]
         selection = VisionTokenSelection.from_wire(multi_modal_inputs[SELECTION_WIRE_KEY])
-        if selection.keep_ratio != expected_keep_ratio:
+        if expected_keep_ratio is not None and selection.keep_ratio != expected_keep_ratio:
             raise ValueError(
                 f"sample {sample_index} rollout keep_ratio {selection.keep_ratio} "
                 f"does not match actor keep_ratio {expected_keep_ratio}"
@@ -303,7 +305,7 @@ def replay_two_stage_rollout_selection(
             raise ValueError(f"sample {sample_index} prefill keep ratio does not match actor config")
         if prefill.selector != config.prefill_selector or prefill.selector_fingerprint != prefill_fingerprint:
             raise ValueError(f"sample {sample_index} prefill selector does not match actor config")
-        if decode.nominal_keep_ratio != config.keep_ratio:
+        if not config.uses_keep_ratio_schedule and decode.nominal_keep_ratio != config.keep_ratio:
             raise ValueError(f"sample {sample_index} decode keep ratio does not match actor config")
         if decode.selector != config.selector or decode.selector_fingerprint != decode_fingerprint:
             raise ValueError(f"sample {sample_index} decode selector does not match actor config")
@@ -362,7 +364,7 @@ def replay_dynamic_rollout_selection(
     per_sample_multi_modal_inputs: list[dict[str, Any] | None],
     *,
     image_token_id: int,
-    expected_keep_ratio: float,
+    expected_keep_ratio: float | None,
     expected_selector: str,
     expected_selector_kwargs: dict[str, Any] | None = None,
 ) -> torch.Tensor:
@@ -386,7 +388,7 @@ def replay_dynamic_rollout_selection(
         selection = selection_from_wire(multi_modal_inputs[SELECTION_WIRE_KEY])
         if not isinstance(selection, DynamicVisionTokenSelection):
             raise ValueError(f"sample {sample_index} does not contain dynamic decode selection")
-        if selection.nominal_keep_ratio != expected_keep_ratio:
+        if expected_keep_ratio is not None and selection.nominal_keep_ratio != expected_keep_ratio:
             raise ValueError(
                 f"sample {sample_index} rollout keep_ratio {selection.nominal_keep_ratio} "
                 f"does not match actor keep_ratio {expected_keep_ratio}"

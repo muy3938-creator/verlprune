@@ -45,6 +45,7 @@ from vllm.v1.engine.utils import CoreEngineProcManager
 from vllm.v1.executor.abstract import Executor
 
 from verl.models.vision_token_pruning.rollout import VisionTokenPruningRollout
+from verl.models.vision_token_pruning.curriculum import PRUNING_GLOBAL_STEP_KEY
 from verl.single_controller.ray import RayClassWithInitArgs
 from verl.utils.config import omega_conf_to_dataclass
 from verl.utils.vllm.vllm_fp8_utils import apply_vllm_fp8_patches
@@ -486,6 +487,15 @@ class vLLMHttpServer:
         priority: int = 0,
     ) -> TokenOutput:
         """Generate sequence with token-in-token-out."""
+        global_step = sampling_params.pop(PRUNING_GLOBAL_STEP_KEY, None)
+        runtime_keep_ratio = self.vision_token_pruning.keep_ratio_for_step(global_step)
+        if self.vision_token_pruning.enabled and self.vision_token_pruning.config.uses_keep_ratio_schedule:
+            await asyncio.gather(
+                *[
+                    worker.set_vision_token_pruning_keep_ratio.remote(runtime_keep_ratio)
+                    for worker in self.workers
+                ]
+            )
         # Calculate the maximum possible new tokens based on available context space
         # This serves as a safety upper bound
         max_possible_tokens = self.config.max_model_len - len(prompt_ids)
@@ -569,6 +579,7 @@ class vLLMHttpServer:
         vision_token_selection = self.vision_token_pruning.decode_selection(
             routed_experts,
             original_token_count=original_visual_token_count,
+            keep_ratio=runtime_keep_ratio,
         )
 
         # Determine stop reason from finish_reason

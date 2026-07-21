@@ -89,6 +89,7 @@ class LayerwiseFlexPruningPlan:
     dynamic_request_by_query: torch.Tensor | None = None
     dynamic_query_active: torch.Tensor | None = None
     budget_override: float | None = None
+    keep_ratio_override: float | None = None
 
     def __post_init__(self) -> None:
         if self.prune_after_layer < 0:
@@ -114,6 +115,8 @@ class LayerwiseFlexPruningPlan:
             raise ValueError("prefill_prune_after_layer must be >= -1")
         if self.prefill_prune_after_layer > self.prune_after_layer:
             raise ValueError("prefill boundary cannot follow the decode boundary")
+        if self.keep_ratio_override is not None and not 0.0 < self.keep_ratio_override < 1.0:
+            raise ValueError("keep_ratio_override must be in (0, 1)")
 
     @property
     def uses_dynamic_decode_selection(self) -> bool:
@@ -182,6 +185,7 @@ def _select_from_decoder_states(
             context_value_states=value[start:end],
             visual_context_mask=candidate_ids[start:end] > 0,
             layer_index=layer_index,
+            keep_ratio=plan.keep_ratio_override,
         )
         selected_positions = image_positions.index_select(0, selected_relative)
         keep[image_positions] = False
@@ -384,7 +388,11 @@ class LayerwisePrunedFlexAttentionImpl(FlexAttentionImpl):
                 softmax_scale=self.scale,
                 temperature=temperature,
                 budget_mode=budget_mode,
-                fixed_keep_ratio=plan.selection_engine.config.keep_ratio,
+                fixed_keep_ratio=(
+                    plan.selection_engine.config.keep_ratio
+                    if plan.keep_ratio_override is None
+                    else plan.keep_ratio_override
+                ),
                 top_p=top_p,
                 min_keep_ratio=min_keep_ratio,
                 max_keep_ratio=max_keep_ratio,
@@ -696,6 +704,13 @@ class _LayerwiseFlexPruningMixin:
         self._pending_candidate_original_counts: torch.Tensor | None = None
         self._pending_capture_values: torch.Tensor | None = None
         self._budget_schedule_index = 0
+        self._runtime_keep_ratio: float | None = None
+
+    def set_vision_token_pruning_keep_ratio(self, keep_ratio: float) -> None:
+        keep_ratio = float(keep_ratio)
+        if not 0.0 < keep_ratio < 1.0:
+            raise ValueError("runtime visual-token keep ratio must be in (0, 1)")
+        self._runtime_keep_ratio = keep_ratio
 
     def recompute_mrope_positions(
         self,
@@ -836,6 +851,7 @@ class _LayerwiseFlexPruningMixin:
                     else None
                 ),
                 budget_override=budget_override,
+                keep_ratio_override=self._runtime_keep_ratio,
             )
             _debug(
                 f"plan actual={actual_tokens} candidates={int((candidate_ids > 0).sum())} "
@@ -871,7 +887,11 @@ class _LayerwiseFlexPruningMixin:
             elif self._pruning_config.selector_input in {"decoder_key", "decode_query"}:
                 indices = torch.arange(len(embeddings), device=embeddings.device)
             else:
-                indices = self._selection_engine.select(embeddings, grid_thw=grid_thw)
+                indices = self._selection_engine.select(
+                    embeddings,
+                    grid_thw=grid_thw,
+                    keep_ratio=self._runtime_keep_ratio,
+                )
             positions = compute_mrope_for_media(grid_thw, merge_size).to(embeddings.device)
             if self._append_zero_position_axis:
                 positions = torch.cat([positions, torch.zeros_like(positions[:, :1])], dim=1)

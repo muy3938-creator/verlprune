@@ -113,6 +113,30 @@ W&B credentials are read from the environment by the normal trainer. Do not
 put API keys in this README, the parquet files, or shell scripts.
 For an offline smoke test without W&B credentials, set `USE_WANDB=false`.
 
+## One-process budget curriculum
+
+To anneal the visual budget during one uninterrupted training run, use the
+curriculum launcher:
+
+```bash
+MODEL_PATH=/root/models/Qwen2.5-VL-3B-Instruct \
+DATA_DIR=/root/experiments/chartvqa-opd/data \
+TOTAL_TRAINING_STEPS=100 \
+TRAINING_CONFIG=chartvqa_opd_full_training \
+bash scripts/run_chartvqa_opd_curriculum.sh
+```
+
+Its default piecewise-linear schedule is 50% at step 1, 10% at 80% of the
+run, and 5% at the final step. It passes the trainer's global step to the
+rollout server, updates only the runtime budget in the Flex model, and lets
+the actor replay the exact selected indices. It does not restart vLLM or use
+intermediate checkpoints. Override `KEEP_RATIO_SCHEDULE` with JSON such as:
+
+```bash
+KEEP_RATIO_SCHEDULE='{"milestones":[[0,0.50],[400,0.25],[800,0.10],[1000,0.05]]}' \
+bash scripts/run_chartvqa_opd_training.sh
+```
+
 ## Reproducibility checklist
 
 Before a run, verify that:
@@ -120,6 +144,7 @@ Before a run, verify that:
 ```bash
 python3 -m py_compile scripts/prepare_chartvqa_opd.py
 bash -n scripts/run_chartvqa_opd_training.sh
+bash -n scripts/run_chartvqa_opd_curriculum.sh
 ```
 
 The contract tests also check that the two image paths and two prompt columns

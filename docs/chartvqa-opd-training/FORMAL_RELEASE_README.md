@@ -104,6 +104,38 @@ Random selection is compatible with `vision_embedding`; query-dependent
 selectors such as VisionPulse use `decode_query`. The selector should not
 modify the teacher input or the ChartQA parquet schema.
 
+## Training-step budget curriculum
+
+The budget can change inside one trainer process. The rollout receives the
+current `global_step`, resolves a shared piecewise-linear schedule, and updates
+only a lightweight runtime keep-ratio field in the Flex model. It does not
+restart vLLM or load intermediate checkpoints. The actor does not independently
+select tokens: it replays the exact indices returned by that rollout step.
+
+The convenience launcher starts at 50%, reaches 10% at 80% of training, and
+finishes at 5%:
+
+```bash
+MODEL_PATH=/root/models/Qwen2.5-VL-3B-Instruct \
+DATA_DIR=/root/experiments/chartvqa-opd/data \
+TOTAL_TRAINING_STEPS=100 \
+TRAINING_CONFIG=chartvqa_opd_full_training \
+bash scripts/run_chartvqa_opd_curriculum.sh
+```
+
+The generated schedule is equivalent to:
+
+```json
+{"milestones": [[1, 0.50], [80, 0.10], [100, 0.05]]}
+```
+
+For a custom schedule, set `KEEP_RATIO_SCHEDULE` directly. For example,
+`KEEP_RATIO_SCHEDULE='{"milestones":[[0,0.50],[400,0.25],[800,0.10],[1000,0.05]]}'`
+holds a gentler 50% → 25% → 10% → 5% progression. The schedule is intended
+for the layerwise Flex backend (`prune_after_layer >= 0`); all rollout and
+actor checks remain exact because the wire protocol records the ratio used for
+each sampled selection.
+
 ## Validation record
 
 The contract suite checks:

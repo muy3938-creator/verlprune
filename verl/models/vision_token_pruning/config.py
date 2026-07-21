@@ -4,6 +4,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from .curriculum import validate_keep_ratio_schedule
+
 _RESERVED_SELECTOR_KWARGS = {
     "token_count",
     "keep_count",
@@ -64,6 +66,9 @@ class VisionTokenPruningConfig:
     selector_input: str = "vision_embedding"
     selector: str = "embedding_norm"
     selector_kwargs: dict[str, Any] = field(default_factory=dict)
+    # Optional optimizer-step curriculum.  Rollout resolves the current ratio
+    # per request; the actor replays the returned exact indices.
+    keep_ratio_schedule: dict[str, Any] = field(default_factory=dict)
     # Optional first-stage physical pruning. When set together with
     # decode_query/VisionPulse, ``keep_ratio`` is relative to this retained
     # subset rather than to the original visual-token count.
@@ -80,6 +85,8 @@ class VisionTokenPruningConfig:
             raise ValueError("vision token pruning selector must be a non-empty name")
         self.selector = self.selector.strip()
         self.selector_kwargs = dict(self.selector_kwargs)
+        self.keep_ratio_schedule = dict(self.keep_ratio_schedule or {})
+        validate_keep_ratio_schedule(self.keep_ratio_schedule)
         self.prefill_selector = self.prefill_selector.strip()
         self.prefill_selector_kwargs = dict(self.prefill_selector_kwargs)
         if not 0.0 < self.keep_ratio <= 1.0:
@@ -101,6 +108,8 @@ class VisionTokenPruningConfig:
             )
         if self.layerwise_backend not in {"flex", "compact_flash"}:
             raise ValueError("vision token pruning layerwise_backend must be 'flex' or 'compact_flash'")
+        if self.keep_ratio_schedule and self.layerwise_backend != "flex":
+            raise ValueError("keep_ratio_schedule currently requires layerwise_backend='flex'")
         if self.pre_pruning_backend not in {"flex", "flash"}:
             raise ValueError("vision token pruning pre_pruning_backend must be 'flex' or 'flash'")
         if self.pre_pruning_backend == "flash":
@@ -232,6 +241,10 @@ class VisionTokenPruningConfig:
         return self.uses_layerwise_backend and self.selector_input == "decode_query"
 
     @property
+    def uses_keep_ratio_schedule(self) -> bool:
+        return bool(self.keep_ratio_schedule)
+
+    @property
     def uses_two_stage_pruning(self) -> bool:
         return self.enabled and self.prefill_keep_ratio is not None
 
@@ -269,6 +282,8 @@ class VisionTokenPruningConfig:
             "selector": self.selector,
             "selector_kwargs": dict(self.selector_kwargs),
         }
+        if self.keep_ratio_schedule:
+            payload["keep_ratio_schedule"] = dict(self.keep_ratio_schedule)
         if self.uses_layerwise_backend:
             payload["prune_after_layer"] = self.prune_after_layer
             payload["layerwise_backend"] = self.layerwise_backend

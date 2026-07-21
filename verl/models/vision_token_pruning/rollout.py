@@ -6,6 +6,7 @@ from typing import Any
 
 from .backends import VllmPruningLaunchOptions, build_vllm_pruning_launch_options
 from .config import VisionTokenPruningConfig, coerce_vision_token_pruning_config
+from .curriculum import resolve_keep_ratio
 from .transport import (
     decode_vllm_dynamic_selection_capture,
     decode_vllm_selection_capture,
@@ -58,11 +59,25 @@ class VisionTokenPruningRollout:
             raise ValueError("vision token pruning found no expanded image tokens in the rollout prompt")
         return token_count
 
-    def decode_selection(self, routed_experts: Any, *, original_token_count: int | None) -> dict[str, Any] | None:
+    def keep_ratio_for_step(self, global_step: int | None) -> float:
+        return resolve_keep_ratio(
+            self.config.keep_ratio_schedule,
+            global_step,
+            fallback=self.config.keep_ratio,
+        )
+
+    def decode_selection(
+        self,
+        routed_experts: Any,
+        *,
+        original_token_count: int | None,
+        keep_ratio: float | None = None,
+    ) -> dict[str, Any] | None:
         if not self.enabled:
             return None
         if original_token_count is None:
             raise RuntimeError("missing original image-token count for a pruned rollout")
+        effective_keep_ratio = self.config.keep_ratio if keep_ratio is None else float(keep_ratio)
         if self.config.uses_two_stage_pruning:
             assert self.config.prefill_keep_ratio is not None
             return decode_vllm_two_stage_selection_capture(
@@ -70,7 +85,7 @@ class VisionTokenPruningRollout:
                 prefill_keep_ratio=self.config.prefill_keep_ratio,
                 prefill_selector=self.config.prefill_selector,
                 prefill_selector_kwargs=self.config.prefill_selector_kwargs,
-                decode_keep_ratio=self.config.keep_ratio,
+                decode_keep_ratio=effective_keep_ratio,
                 decode_selector=self.config.selector,
                 decode_selector_kwargs=self.config.selector_kwargs,
             ).to_wire()
@@ -86,7 +101,7 @@ class VisionTokenPruningRollout:
         )
         return decoder(
             routed_experts,
-            **{ratio_name: self.config.keep_ratio},
+            **{ratio_name: effective_keep_ratio},
             original_visual_token_count=original_token_count,
             selector=self.config.selector,
             selector_kwargs=self.config.selector_kwargs,

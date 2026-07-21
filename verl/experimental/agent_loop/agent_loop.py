@@ -34,6 +34,7 @@ from transformers import AutoProcessor, AutoTokenizer
 from verl.experimental.agent_loop.prometheus_utils import update_prometheus_config
 from verl.experimental.agent_loop.utils import resolve_config_path
 from verl.experimental.reward_loop import RewardLoopWorker
+from verl.models.vision_token_pruning.curriculum import PRUNING_GLOBAL_STEP_KEY
 from verl.models.vision_token_pruning.training import attach_selection_to_multi_modal_inputs
 from verl.protocol import DataProto
 from verl.single_controller.ray.base import RayResourcePool, RayWorkerGroup
@@ -500,6 +501,11 @@ class AgentLoopWorker:
             repetition_penalty=1.0,
             logprobs=config.calculate_log_probs,
         )
+        if "global_steps" in batch.meta_info:
+            # This private field is removed by the rollout server before it
+            # constructs vLLM SamplingParams. It carries the optimizer step to
+            # the runtime visual-token budget resolver.
+            sampling_params[PRUNING_GLOBAL_STEP_KEY] = int(batch.meta_info["global_steps"])
 
         # override sampling params for validation
         validate = batch.meta_info.get("validate", False)

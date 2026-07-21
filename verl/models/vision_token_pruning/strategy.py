@@ -383,9 +383,11 @@ class VisionTokenSelectionEngine:
         features: torch.Tensor,
         *,
         grid_thw: torch.Tensor | list[int] | None,
+        keep_ratio: float | None = None,
     ) -> torch.Tensor:
         token_count = len(features)
-        keep_count = compute_keep_count(token_count, self.config.keep_ratio)
+        effective_ratio = self.config.keep_ratio if keep_ratio is None else float(keep_ratio)
+        keep_count = compute_keep_count(token_count, effective_ratio)
         generator = torch.Generator(device=features.device)
         generator.manual_seed(self.seed + self._selection_counter)
         self._selection_counter += 1
@@ -411,9 +413,11 @@ class VisionTokenSelectionEngine:
         context_key_states: torch.Tensor | None = None,
         context_value_states: torch.Tensor | None = None,
         visual_context_mask: torch.Tensor | None = None,
+        keep_ratio: float | None = None,
     ) -> torch.Tensor:
         token_count = len(key_states)
-        keep_count = compute_keep_count(token_count, self.config.keep_ratio)
+        effective_ratio = self.config.keep_ratio if keep_ratio is None else float(keep_ratio)
+        keep_count = compute_keep_count(token_count, effective_ratio)
         generator = torch.Generator(device=key_states.device)
         generator.manual_seed(self.seed + self._selection_counter)
         self._selection_counter += 1

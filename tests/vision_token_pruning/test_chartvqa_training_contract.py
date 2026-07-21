@@ -184,6 +184,22 @@ def test_teacher_rope_path_supports_transformers5_mm_token_types():
     assert 'rope_index_kwargs["input_ids"] = prompt_input_ids.unsqueeze(0)' in teacher_rope_block
 
 
+def test_training_step_curriculum_is_forwarded_to_rollout_and_runtime_model():
+    agent_loop = (ROOT / "verl/experimental/agent_loop/agent_loop.py").read_text()
+    server = (ROOT / "verl/workers/rollout/vllm_rollout/vllm_async_server.py").read_text()
+    worker = (ROOT / "verl/workers/rollout/vllm_rollout/vllm_rollout.py").read_text()
+    flex_model = (ROOT / "verl/vllm_plugins/layerwise_flex_vision_token_pruning.py").read_text()
+    launcher = (ROOT / "scripts/run_chartvqa_opd_curriculum.sh").read_text()
+
+    assert "PRUNING_GLOBAL_STEP_KEY" in agent_loop
+    assert "keep_ratio_for_step" in server
+    assert "set_vision_token_pruning_keep_ratio.remote" in server
+    assert "set_vision_token_pruning_keep_ratio" in worker
+    assert "_runtime_keep_ratio" in flex_model
+    assert 'CURRICULUM_START_RATIO="${CURRICULUM_START_RATIO:-0.50}"' in launcher
+    assert 'CURRICULUM_END_RATIO="${CURRICULUM_END_RATIO:-0.05}"' in launcher
+
+
 def test_qwen25_vl_flops_counter_reads_text_config():
     torch = pytest.importorskip("torch")
     try:
