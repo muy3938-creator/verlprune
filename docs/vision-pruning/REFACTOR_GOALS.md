@@ -68,3 +68,8 @@ Two-stage experiments = **ordered list of stages**, not a third protocol type.
 | 2026-07-22 07:35 | Rollout uses `self.spec` for decode branch | done |
 | 2026-07-22 07:36 | PLATFORM.md mental model | done |
 | 2026-07-22 07:37 | Unit suite 1040 passed after platform unify | done |
+| 2026-07-22 08:30 | Flex Plan uses StageKind/InputKind (not selector_input str) | done |
+| 2026-07-22 08:30 | layerwise_plan() builds from config.spec | done |
+| 2026-07-22 08:30 | Flex/physical plugins branch on config.spec | done |
+| 2026-07-22 08:30 | Stable seed hash(stage, layer, counter) | done |
+| 2026-07-22 08:35 | Unit suite 1040 passed after Spec-driven plugins | done |

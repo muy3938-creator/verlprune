@@ -47,6 +47,7 @@ from vllm.v1.attention.backends.registry import AttentionBackendEnum, register_b
 
 from verl.models.vision_token_pruning.config import VisionTokenPruningConfig
 from verl.models.vision_token_pruning.dynamic import select_dynamic_visual_kv
+from verl.models.vision_token_pruning.stages import InputKind
 from verl.models.vision_token_pruning.strategy import VisionTokenSelectionEngine
 from verl.models.vision_token_pruning.transport import (
     decode_embedding_selection_metadata,
@@ -55,9 +56,10 @@ from verl.models.vision_token_pruning.transport import (
 from verl.vllm_plugins.flex.observe import select_from_decoder_states as _select_from_decoder_states
 from verl.vllm_plugins.flex.plan import (
     FORWARD_CONTEXT_KEY as _FORWARD_CONTEXT_KEY,
-    LayerwiseFlexPruningPlan,
+    LayerwiseFlexPruningPlan,  # re-exported for tests
     active_plan as _active_plan,
     layer_index_from_name,
+    layerwise_plan,
 )
 from verl.vllm_plugins.vision_token_pruning_common import pruning_config_from_hf
 from verl.vllm_plugins.vision_token_pruning import (
@@ -227,7 +229,8 @@ class LayerwisePrunedFlexAttentionImpl(FlexAttentionImpl):
             dtype=torch.int32,
             device=key.device,
         )
-        if plan.selection_engine.config.uses_two_stage_pruning:
+        two_stage = plan.selection_engine.config.spec.uses_two_stage_pruning
+        if two_stage:
             if capture_capacity < 3:
                 raise ValueError("two-stage selection capture_capacity must be at least 3")
             prefill_rows = candidate_ids > 0
@@ -271,11 +274,7 @@ class LayerwisePrunedFlexAttentionImpl(FlexAttentionImpl):
                 min_keep_ratio=min_keep_ratio,
                 max_keep_ratio=max_keep_ratio,
             )
-            usable_capacity = (
-                capture_capacity - 1
-                if plan.selection_engine.config.uses_two_stage_pruning
-                else capture_capacity
-            )
+            usable_capacity = capture_capacity - 1 if two_stage else capture_capacity
             if result.keep_count > usable_capacity:
                 raise ValueError(
                     f"dynamic selection kept {result.keep_count} visual tokens, exceeding "
@@ -361,7 +360,7 @@ class LayerwisePrunedFlexAttentionImpl(FlexAttentionImpl):
                 f"static_keep={plan.query_keep_mask is not None}"
             )
         if layer_index == plan.prune_after_layer:
-            if plan.selector_input == "decoder_key":
+            if plan.uses_boundary_qkv:
                 _select_from_decoder_states(
                     plan,
                     query,
@@ -539,17 +538,18 @@ class _LayerwiseFlexPruningMixin:
     def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
         super().__init__(vllm_config=vllm_config, prefix=prefix)
         self._pruning_config = pruning_config_from_hf(self.config)
-        if not self._pruning_config.uses_layerwise_backend:
-            raise ValueError("layerwise Flex model requires prune_after_layer >= 0")
-        if self._pruning_config.layerwise_backend != "flex":
+        if not self._pruning_config.spec.uses_layerwise_backend:
+            raise ValueError("layerwise Flex model requires flex_mask PruningSpec")
+        if self._pruning_config.spec.layerwise_backend != "flex":
             raise ValueError("layerwise Flex model requires layerwise_backend='flex'")
         self._selection_engine = VisionTokenSelectionEngine(
             self._pruning_config,
             seed=int(vllm_config.model_config.seed),
         )
         self._prefill_selection_engine = None
-        if self._pruning_config.uses_two_stage_pruning:
-            assert self._pruning_config.prefill_keep_ratio is not None
+        if self._pruning_config.spec.uses_two_stage_pruning:
+            if self._pruning_config.prefill_keep_ratio is None:
+                raise ValueError("two-stage Flex model missing prefill_keep_ratio")
             self._prefill_selection_engine = VisionTokenSelectionEngine(
                 VisionTokenPruningConfig(
                     enabled=True,
@@ -561,7 +561,7 @@ class _LayerwiseFlexPruningMixin:
             )
             expected_pruning_rate = (
                 1.0 - self._pruning_config.prefill_keep_ratio
-                if self._pruning_config.uses_physical_prefill_pruning
+                if self._pruning_config.spec.uses_physical_prefill_pruning
                 else 0.0
             )
             if (
@@ -597,7 +597,7 @@ class _LayerwiseFlexPruningMixin:
         for embeddings in multimodal_embeddings:
             if not len(embeddings):
                 continue
-            if self._pruning_config.uses_two_stage_pruning:
+            if self._pruning_config.spec.uses_two_stage_pruning:
                 self._pending_selection_metadata.append(
                     decode_embedding_selection_metadata(embeddings[:, -4:-2])
                 )
@@ -611,7 +611,7 @@ class _LayerwiseFlexPruningMixin:
                 self._pending_original_counts.append(
                     embeddings.new_zeros(len(embeddings), dtype=torch.long)
                 )
-        metadata_columns = 4 if self._pruning_config.uses_two_stage_pruning else 2
+        metadata_columns = 4 if self._pruning_config.spec.uses_two_stage_pruning else 2
         embeddings_without_metadata = tuple(
             embeddings[:, :-metadata_columns] for embeddings in multimodal_embeddings
         )
@@ -658,14 +658,16 @@ class _LayerwiseFlexPruningMixin:
             candidate_original_counts[is_multimodal] = original_counts.to(input_ids.device)
             self._pending_candidate_original_counts = candidate_original_counts
 
-            if self._pruning_config.selector_input == "vision_embedding" or (
-                self._pruning_config.uses_delayed_prefill_pruning
-                and self._pruning_config.uses_two_stage_pruning
+            # Static vision-embedding selection (or delayed two-stage prefill mask)
+            # already encoded keep bits into candidate metadata columns.
+            primary_input = self._pruning_config.spec.primary_stage.input_kind
+            if primary_input is InputKind.VISION_EMBEDDING or (
+                self._pruning_config.spec.uses_delayed_prefill_pruning and self._pruning_config.spec.uses_two_stage_pruning
             ):
                 keep = torch.ones(input_ids.numel(), dtype=torch.bool, device=input_ids.device)
                 keep[is_multimodal] = encoded.to(input_ids.device) > 0
                 self._pending_query_keep_mask = keep
-            if self._pruning_config.selector_input == "vision_embedding":
+            if primary_input is InputKind.VISION_EMBEDDING:
                 capture = torch.zeros((input_ids.numel(), 1), dtype=torch.int32, device=input_ids.device)
                 capture[is_multimodal, 0] = encoded.to(device=input_ids.device, dtype=torch.int32)
                 self._pending_capture_values = capture
@@ -711,19 +713,12 @@ class _LayerwiseFlexPruningMixin:
                 schedule = tuple(float(value) for value in schedule)
                 budget_override = schedule[min(self._budget_schedule_index, len(schedule) - 1)]
                 self._budget_schedule_index += 1
-            context.additional_kwargs[_FORWARD_CONTEXT_KEY] = LayerwiseFlexPruningPlan(
-                prune_after_layer=self._pruning_config.prune_after_layer,
-                selector_input=self._pruning_config.selector_input,
+            context.additional_kwargs[_FORWARD_CONTEXT_KEY] = layerwise_plan(
+                config=self._pruning_config,
                 candidate_ids=candidate_ids,
                 candidate_original_counts=candidate_original_counts,
                 query_keep_mask=keep,
                 selection_engine=self._selection_engine,
-                pre_pruning_backend=self._pruning_config.pre_pruning_backend,
-                prefill_prune_after_layer=(
-                    self._pruning_config.prefill_prune_after_layer
-                    if self._pruning_config.uses_two_stage_pruning
-                    else None
-                ),
                 budget_override=budget_override,
                 keep_ratio_override=self._runtime_keep_ratio,
             )
@@ -754,11 +749,16 @@ class _LayerwiseFlexPruningMixin:
         merge_size = self.visual.spatial_merge_size
         output = []
         for embeddings, grid_thw in zip(image_embeds_split, image_grid_thw.tolist(), strict=True):
-            if self._pruning_config.uses_two_stage_pruning:
-                assert self._prefill_selection_engine is not None
+            if self._pruning_config.spec.uses_two_stage_pruning:
+                if self._prefill_selection_engine is None:
+                    raise RuntimeError("two-stage Flex model missing prefill selection engine")
                 indices = self._prefill_selection_engine.select(embeddings, grid_thw=grid_thw)
                 _debug(f"annotate-image original={len(embeddings)} selected={len(indices)}")
-            elif self._pruning_config.selector_input in {"decoder_key", "decode_query"}:
+            elif self._pruning_config.spec.primary_stage.input_kind in {
+                InputKind.BOUNDARY_QKV,
+                InputKind.DECODE_QK,
+            }:
+                # Selection deferred to decoder boundary / decode query.
                 indices = torch.arange(len(embeddings), device=embeddings.device)
             else:
                 indices = self._selection_engine.select(
@@ -769,13 +769,13 @@ class _LayerwiseFlexPruningMixin:
             positions = compute_mrope_for_media(grid_thw, merge_size).to(embeddings.device)
             if self._append_zero_position_axis:
                 positions = torch.cat([positions, torch.zeros_like(positions[:, :1])], dim=1)
-            if self._pruning_config.uses_two_stage_pruning:
+            if self._pruning_config.spec.uses_two_stage_pruning:
                 index_metadata = encode_embedding_selection_metadata(indices, dtype=embeddings.dtype)
                 count_metadata = encode_embedding_selection_metadata(
                     indices.new_full((len(indices),), len(embeddings) - 1),
                     dtype=embeddings.dtype,
                 )
-                if self._pruning_config.uses_physical_prefill_pruning:
+                if self._pruning_config.spec.uses_physical_prefill_pruning:
                     metadata = torch.cat((index_metadata, count_metadata), dim=1)
                     output.append(
                         torch.cat(

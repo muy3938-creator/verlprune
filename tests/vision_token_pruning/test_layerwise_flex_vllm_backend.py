@@ -20,6 +20,7 @@ from vllm.v1.attention.backends.flex_attention import (  # noqa: E402
 )
 
 from verl.models.vision_token_pruning.config import VisionTokenPruningConfig  # noqa: E402
+from verl.models.vision_token_pruning.stages import InputKind, StageKind  # noqa: E402
 from verl.models.vision_token_pruning.strategy import VisionTokenSelectionEngine  # noqa: E402
 from verl.vllm_plugins.layerwise_flex_vision_token_pruning import (  # noqa: E402
     LayerwiseFlexPruningPlan,
@@ -100,7 +101,8 @@ def test_flash_is_used_through_boundary_and_post_boundary_stays_flex():
     )
     plan = LayerwiseFlexPruningPlan(
         prune_after_layer=1,
-        selector_input="vision_embedding",
+        stage_kind=StageKind.BOUNDARY_ONCE,
+        input_kind=InputKind.VISION_EMBEDDING,
         candidate_ids=torch.zeros(4, dtype=torch.int64, device="cuda"),
         query_keep_mask=torch.ones(4, dtype=torch.bool, device="cuda"),
         selection_engine=VisionTokenSelectionEngine(config, seed=7),
@@ -158,7 +160,8 @@ def test_flash_pre_boundary_falls_back_for_multimodal_prefix_mask():
     )
     plan = LayerwiseFlexPruningPlan(
         prune_after_layer=1,
-        selector_input="vision_embedding",
+        stage_kind=StageKind.BOUNDARY_ONCE,
+        input_kind=InputKind.VISION_EMBEDDING,
         candidate_ids=torch.zeros(4, dtype=torch.int64, device="cuda"),
         query_keep_mask=torch.ones(4, dtype=torch.bool, device="cuda"),
         selection_engine=VisionTokenSelectionEngine(config, seed=7),
@@ -206,7 +209,8 @@ def test_delayed_two_stage_plan_applies_static_then_dynamic_slot_masks():
     plan = LayerwiseFlexPruningPlan(
         prune_after_layer=3,
         prefill_prune_after_layer=1,
-        selector_input="decode_query",
+        stage_kind=StageKind.DECODE_QUERY,
+        input_kind=InputKind.DECODE_QK,
         candidate_ids=torch.tensor([0, 1, 0, 2, 0], device="cuda"),
         query_keep_mask=torch.tensor([True, True, False, True, True], device="cuda"),
         selection_engine=VisionTokenSelectionEngine(config, seed=7),
@@ -278,7 +282,8 @@ def test_boundary_key_selection_persists_into_decode_physical_slots():
     )
     plan = LayerwiseFlexPruningPlan(
         prune_after_layer=15,
-        selector_input="decoder_key",
+        stage_kind=StageKind.BOUNDARY_ONCE,
+        input_kind=InputKind.BOUNDARY_QKV,
         # Tokens 1..4 are image tokens; their positive values are the exact
         # one-based indices returned through Vision-OPD's capture protocol.
         candidate_ids=torch.tensor([0, 1, 2, 3, 4, 0], device="cuda"),
@@ -364,7 +369,8 @@ def test_boundary_key_selection_persists_into_decode_physical_slots():
     decode_metadata = _metadata(query_tokens=1, sequence_length=7, slot_start=22)
     decode_plan = LayerwiseFlexPruningPlan(
         prune_after_layer=15,
-        selector_input="decoder_key",
+        stage_kind=StageKind.BOUNDARY_ONCE,
+        input_kind=InputKind.BOUNDARY_QKV,
         candidate_ids=torch.zeros(1, dtype=torch.int64, device="cuda"),
         query_keep_mask=None,
         selection_engine=plan.selection_engine,
@@ -414,7 +420,8 @@ def test_each_decode_query_reselects_visual_kv_at_the_anchor_layer():
     engine = VisionTokenSelectionEngine(config, seed=7)
     prompt_plan = LayerwiseFlexPruningPlan(
         prune_after_layer=15,
-        selector_input="decode_query",
+        stage_kind=StageKind.DECODE_QUERY,
+        input_kind=InputKind.DECODE_QK,
         candidate_ids=torch.tensor([0, 1, 2, 3, 4, 0], device="cuda"),
         query_keep_mask=None,
         selection_engine=engine,
@@ -506,7 +513,8 @@ def test_each_decode_query_reselects_visual_kv_at_the_anchor_layer():
     decode_metadata = _metadata(query_tokens=1, sequence_length=7, slot_start=22)
     decode_plan = LayerwiseFlexPruningPlan(
         prune_after_layer=15,
-        selector_input="decode_query",
+        stage_kind=StageKind.DECODE_QUERY,
+        input_kind=InputKind.DECODE_QK,
         candidate_ids=torch.zeros(1, dtype=torch.int64, device="cuda"),
         query_keep_mask=None,
         selection_engine=engine,

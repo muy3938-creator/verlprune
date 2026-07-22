@@ -43,9 +43,9 @@ class _PrunedImagePromptMixin:
     ) -> Sequence[PromptUpdate]:
         updates = list(super()._get_prompt_updates(mm_items, hf_processor_mm_kwargs, out_mm_kwargs))
         config = pruning_config_from_hf(self.info.get_hf_config())
-        if config.uses_layerwise_backend and not config.uses_physical_prefill_pruning:
+        if config.spec.uses_layerwise_backend and not config.spec.uses_physical_prefill_pruning:
             return updates
-        keep_ratio = config.prefill_keep_ratio if config.uses_two_stage_pruning else config.keep_ratio
+        keep_ratio = config.prefill_keep_ratio if config.spec.uses_two_stage_pruning else config.keep_ratio
         assert keep_ratio is not None
         for update in updates:
             if update.modality != "image":

@@ -142,6 +142,16 @@ def run_vision_token_strategy(
     )
 
 
+def _stable_seed(base_seed: int, *parts: object) -> int:
+    """Derive a reproducible seed from stable parts (not a global counter alone)."""
+
+    import hashlib
+
+    payload = "|".join([str(base_seed), *[str(part) for part in parts]])
+    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    return int(digest[:16], 16) % (2**31 - 1)
+
+
 class VisionTokenSelectionEngine:
     """Deterministic rollout-side owner of strategy invocation and seeding."""
 
@@ -154,6 +164,17 @@ class VisionTokenSelectionEngine:
     def selection_count(self) -> int:
         return self._selection_counter
 
+    def _next_generator(self, device: torch.device, *, stage: str, layer_index: int | None) -> torch.Generator:
+        # Counter still advances so successive calls differ, but the seed also
+        # mixes stage/layer so async reordering is less likely to collide.
+        counter = self._selection_counter
+        self._selection_counter += 1
+        generator = torch.Generator(device=device)
+        generator.manual_seed(
+            _stable_seed(self.seed, stage, layer_index if layer_index is not None else -1, counter)
+        )
+        return generator
+
     def select(
         self,
         features: torch.Tensor,
@@ -164,9 +185,7 @@ class VisionTokenSelectionEngine:
         token_count = len(features)
         effective_ratio = self.config.keep_ratio if keep_ratio is None else float(keep_ratio)
         keep_count = compute_keep_count(token_count, effective_ratio)
-        generator = torch.Generator(device=features.device)
-        generator.manual_seed(self.seed + self._selection_counter)
-        self._selection_counter += 1
+        generator = self._next_generator(features.device, stage="vision", layer_index=None)
         request = VisionTokenSelectionRequest(
             token_count=token_count,
             keep_count=keep_count,
@@ -194,9 +213,9 @@ class VisionTokenSelectionEngine:
         token_count = len(key_states)
         effective_ratio = self.config.keep_ratio if keep_ratio is None else float(keep_ratio)
         keep_count = compute_keep_count(token_count, effective_ratio)
-        generator = torch.Generator(device=key_states.device)
-        generator.manual_seed(self.seed + self._selection_counter)
-        self._selection_counter += 1
+        generator = self._next_generator(
+            key_states.device, stage="boundary", layer_index=layer_index
+        )
         request = VisionTokenSelectionRequest(
             token_count=token_count,
             keep_count=keep_count,

@@ -336,8 +336,8 @@ class _LayerwisePruningMixin:
     def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
         super().__init__(vllm_config=vllm_config, prefix=prefix)
         self._pruning_config = pruning_config_from_hf(self.config)
-        if not self._pruning_config.uses_layerwise_backend:
-            raise ValueError("layerwise vLLM model requires prune_after_layer >= 0")
+        if not self._pruning_config.spec.uses_layerwise_backend:
+            raise ValueError("layerwise vLLM model requires flex/compact layerwise PruningSpec")
         self._prune_after_layer = self._pruning_config.prune_after_layer
         self._selection_engine = VisionTokenSelectionEngine(
             self._pruning_config,
