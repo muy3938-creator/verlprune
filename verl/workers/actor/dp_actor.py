@@ -362,6 +362,14 @@ class DataParallelPPOActor(BasePPOActor):
             input_ids = micro_batch["input_ids"]
             batch_size, seqlen = input_ids.shape
             attention_mask = micro_batch["attention_mask"]
+            if "vision_token_keep_mask" in multi_modal_inputs:
+                from verl.models.vision_token_pruning.training_replay import apply_pre_llm_pruning_to_attention_mask
+
+                raw_model = getattr(model, "module", model)
+                image_token_id = getattr(getattr(raw_model, "config", None), "image_token_id", 151655)
+                attention_mask = apply_pre_llm_pruning_to_attention_mask(
+                    input_ids, attention_mask, micro_batch["multi_modal_inputs"], image_token_id
+                )
             position_ids = micro_batch["position_ids"]
             response_start_idx = micro_batch.get("response_start_idx")
             if response_start_idx is not None:
@@ -1019,6 +1027,9 @@ class DataParallelPPOActor(BasePPOActor):
                         }
                         if "teacher_multi_modal_inputs" in model_inputs:
                             teacher_inputs["multi_modal_inputs"] = model_inputs["teacher_multi_modal_inputs"]
+                        elif "multi_modal_inputs" in model_inputs:
+                            from verl.models.vision_token_pruning.training_replay import strip_pruning_from_sample
+                            teacher_inputs["multi_modal_inputs"] = strip_pruning_from_sample(model_inputs["multi_modal_inputs"])
                         teacher_model = self.teacher_module or self.actor_module
                         if use_trust_region_teacher and (
                             self.teacher_module is None or self.teacher_module is self.actor_module

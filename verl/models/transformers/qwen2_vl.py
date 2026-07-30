@@ -340,11 +340,34 @@ def _get_input_embeds(
     pixel_values_videos: Optional[torch.FloatTensor] = None,
     image_grid_thw: Optional[torch.LongTensor] = None,
     video_grid_thw: Optional[torch.LongTensor] = None,
+    vision_token_keep_mask: Optional[torch.BoolTensor] = None,
 ):
     inputs_embeds = model.get_input_embeddings()(input_ids)
     if pixel_values is not None:
         pixel_values = pixel_values.type(model.visual.dtype)
         image_embeds = model.visual(pixel_values, grid_thw=image_grid_thw)
+        if hasattr(image_embeds, "pooler_output"):
+            image_embeds = image_embeds.pooler_output
+
+        # --- Pre-LLM pruning: physically drop visual tokens ---
+        if vision_token_keep_mask is not None:
+            from verl.models.vision_token_pruning.sequence_compressor import prune_visual_embeddings
+
+            image_embeds = prune_visual_embeddings(image_embeds, vision_token_keep_mask)
+            # Locate all image token positions in input_ids (B, S)
+            image_positions = (input_ids == model.config.image_token_id).nonzero(as_tuple=False)
+            if image_positions.numel() > 0:
+                drop_positions = image_positions[~vision_token_keep_mask.to(image_positions.device)]
+                if drop_positions.numel() > 0:
+                    # Update attention_mask and input_ids at 2D coordinates [batch_idx, seq_idx]
+                    if attention_mask is not None:
+                        attention_mask = attention_mask.clone()
+                        attention_mask[drop_positions[:, 0], drop_positions[:, 1]] = 0
+                    input_ids = input_ids.clone()
+                    input_ids[drop_positions[:, 0], drop_positions[:, 1]] = 0
+                    # Rebuild inputs_embeds for the modified input_ids
+                    inputs_embeds = model.get_input_embeddings()(input_ids)
+
         n_image_tokens = (input_ids == model.config.image_token_id).sum().item()
         n_image_features = image_embeds.shape[0]
         if n_image_tokens != n_image_features:
@@ -363,6 +386,8 @@ def _get_input_embeds(
     if pixel_values_videos is not None:
         pixel_values_videos = pixel_values_videos.type(model.visual.dtype)
         video_embeds = model.visual(pixel_values_videos, grid_thw=video_grid_thw)
+        if hasattr(video_embeds, "pooler_output"):
+            video_embeds = video_embeds.pooler_output
         n_video_tokens = (input_ids == model.config.video_token_id).sum().item()
         n_video_features = video_embeds.shape[0]
         if n_video_tokens != n_video_features:
@@ -384,6 +409,8 @@ def _get_input_embeds(
         pixel_values = torch.zeros((16, patch_dim), dtype=inputs_embeds.dtype, device=inputs_embeds.device)
         image_grid_thw = torch.tensor([[1, 4, 4]], dtype=torch.long, device=inputs_embeds.device)
         image_embeds = model.visual(pixel_values, grid_thw=image_grid_thw)
+        if hasattr(image_embeds, "pooler_output"):
+            image_embeds = image_embeds.pooler_output
         inputs_embeds += 0.0 * image_embeds.mean()
 
     if attention_mask is not None:
@@ -422,8 +449,10 @@ def qwen2_vl_base_forward(
     video_grid_thw: Optional[torch.LongTensor] = None,
     **kwargs,
 ):
+    vision_token_keep_mask = kwargs.pop("vision_token_keep_mask", None)
     kwargs["inputs_embeds"], kwargs["attention_mask"] = _get_input_embeds(
-        self, input_ids, attention_mask, pixel_values, pixel_values_videos, image_grid_thw, video_grid_thw
+        self, input_ids, attention_mask, pixel_values, pixel_values_videos, image_grid_thw, video_grid_thw,
+        vision_token_keep_mask=vision_token_keep_mask,
     )  # avoid lora module having multiple keyword arguments
     return self.language_model(input_ids=None, **kwargs)
 
@@ -439,7 +468,8 @@ def qwen2_vl_forward(
     video_grid_thw: Optional[torch.LongTensor] = None,
     **kwargs,
 ):
-    if is_transformers_version_in_range(min_version="4.52.0"):
+    vision_token_keep_mask = kwargs.pop("vision_token_keep_mask", None)
+    if is_transformers_version_in_range(min_version="4.52.0") and vision_token_keep_mask is None:
         return self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -452,7 +482,8 @@ def qwen2_vl_forward(
         )
     else:
         inputs_embeds, attention_mask = _get_input_embeds(
-            self, input_ids, attention_mask, pixel_values, pixel_values_videos, image_grid_thw, video_grid_thw
+            self, input_ids, attention_mask, pixel_values, pixel_values_videos, image_grid_thw, video_grid_thw,
+            vision_token_keep_mask=vision_token_keep_mask,
         )
         return self.model(
             input_ids=None,
