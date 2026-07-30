@@ -30,7 +30,7 @@ logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
 
 
-def get_rope_index(
+def _get_rope_index_native(
     processor,
     input_ids: torch.Tensor,
     image_grid_thw: Optional[torch.Tensor] = None,
@@ -39,18 +39,13 @@ def get_rope_index(
     **kwargs,
 ) -> torch.Tensor:
     """
-    Gets the position ids for Qwen3-VL, it should be generated before sharding the sequence.
-    The batch dim has been removed and the input_ids should be a 1D tensor representing a single example.
-    https://github.com/huggingface/transformers/blob/v4.57.0/src/transformers/models/qwen3_vl/modeling_qwen3_vl.py#L916
+    Gets the position ids for Qwen3-VL (native HF implementation without pruning).
     """
     spatial_merge_size = processor.image_processor.merge_size
     image_token_id = processor.image_token_id
     video_token_id = processor.video_token_id
     vision_start_token_id = processor.vision_start_token_id
 
-    # Since we use timestamps to separate videos,
-    # like <t1> <vision_start> <frame1> <vision_end> <t2> <vision_start> <frame2> <vision_end>,
-    # the video_grid_thw should also be split
     if video_grid_thw is not None:
         video_grid_thw = torch.repeat_interleave(video_grid_thw, video_grid_thw[:, 0], dim=0)
         video_grid_thw[:, 0] = 1
@@ -71,6 +66,7 @@ def get_rope_index(
         input_tokens = input_ids.tolist()
         llm_pos_ids_list: list = []
         st = 0
+        st_val = 0
         remain_images, remain_videos = image_nums, video_nums
         for _ in range(image_nums + video_nums):
             if image_token_id in input_tokens and remain_images > 0:
@@ -90,6 +86,7 @@ def get_rope_index(
                 image_index += 1
                 remain_images -= 1
                 ed = ed_image
+                is_video = False
             else:
                 t, h, w = (
                     video_grid_thw[video_index][0],
@@ -99,6 +96,7 @@ def get_rope_index(
                 video_index += 1
                 remain_videos -= 1
                 ed = ed_video
+                is_video = True
 
             llm_grid_t, llm_grid_h, llm_grid_w = (
                 t.item(),
@@ -107,21 +105,24 @@ def get_rope_index(
             )
             text_len = ed - st
 
-            st_idx = llm_pos_ids_list[-1].max() + 1 if len(llm_pos_ids_list) > 0 else 0
-            llm_pos_ids_list.append(torch.arange(text_len).view(1, -1).expand(3, -1) + st_idx)
+            llm_pos_ids_list.append(torch.arange(text_len).view(1, -1).expand(3, -1) + st_val)
+            st_val += text_len
 
-            # t_index is always 0 because llm_grid_t is always 1
-            # (we use timestamps to encode the temporal information for videos)
             t_index = torch.arange(llm_grid_t).view(-1, 1).expand(-1, llm_grid_h * llm_grid_w).flatten()
             h_index = torch.arange(llm_grid_h).view(1, -1, 1).expand(llm_grid_t, -1, llm_grid_w).flatten()
             w_index = torch.arange(llm_grid_w).view(1, 1, -1).expand(llm_grid_t, llm_grid_h, -1).flatten()
-            llm_pos_ids_list.append(torch.stack([t_index, h_index, w_index]) + text_len + st_idx)
+            
+            image_pos = torch.stack([t_index, h_index, w_index]) + st_val
+            orig_max = int(image_pos.max().item())
+            
+            llm_pos_ids_list.append(image_pos)
+            
+            st_val = orig_max + 1
             st = ed + llm_grid_t * llm_grid_h * llm_grid_w
 
         if st < len(input_tokens):
-            st_idx = llm_pos_ids_list[-1].max() + 1 if len(llm_pos_ids_list) > 0 else 0
             text_len = len(input_tokens) - st
-            llm_pos_ids_list.append(torch.arange(text_len).view(1, -1).expand(3, -1) + st_idx)
+            llm_pos_ids_list.append(torch.arange(text_len).view(1, -1).expand(3, -1) + st_val)
 
         llm_positions = torch.cat(llm_pos_ids_list, dim=1).reshape(3, -1)
         position_ids[..., attention_mask == 1] = llm_positions.to(position_ids.device)
@@ -136,6 +137,67 @@ def get_rope_index(
     return position_ids
 
 
+def get_rope_index(
+    processor,
+    input_ids: torch.Tensor,
+    image_grid_thw: Optional[torch.Tensor] = None,
+    video_grid_thw: Optional[torch.Tensor] = None,
+    attention_mask: Optional[torch.Tensor] = None,
+    **kwargs,
+) -> torch.Tensor:
+    """
+    Gets the position ids for Qwen3-VL, supporting non-intrusive pruning via post-processing wrapper.
+    """
+    vision_token_keep_mask = kwargs.get("vision_token_keep_mask", None)
+    if vision_token_keep_mask is None:
+        return _get_rope_index_native(
+            processor,
+            input_ids,
+            image_grid_thw=image_grid_thw,
+            video_grid_thw=video_grid_thw,
+            attention_mask=attention_mask,
+            **kwargs,
+        )
+
+    image_token_id = processor.image_token_id
+    
+    # 1. Construct unpruned attention mask (restoring image tokens to 1 to avoid native indexing crashes)
+    unpruned_attention_mask = attention_mask.clone()
+    unpruned_attention_mask[input_ids == image_token_id] = 1
+
+    # 2. Get unpruned coordinates from the native HF logic
+    position_ids = _get_rope_index_native(
+        processor,
+        input_ids,
+        image_grid_thw=image_grid_thw,
+        video_grid_thw=video_grid_thw,
+        attention_mask=unpruned_attention_mask,
+        **kwargs,
+    )
+
+    # 3. Build a global boolean mask for the unpruned active tokens to slice correct coordinates
+    active_mask = (unpruned_attention_mask == 1)
+    unpruned_seq_len = active_mask.sum().item()
+    keep_mask_global = torch.ones(unpruned_seq_len, dtype=torch.bool, device=input_ids.device)
+
+    # Locate the image tokens in the active unpruned sequence
+    active_input_ids = input_ids[active_mask]
+    image_token_indices = torch.argwhere(active_input_ids == image_token_id).flatten()
+
+    # Apply keep/prune decisions to keep_mask_global
+    discard_indices = image_token_indices[~vision_token_keep_mask.to(device=input_ids.device)]
+    keep_mask_global[discard_indices] = False
+
+    # 4. Slice the active position IDs
+    unpruned_active_pos = position_ids[:, active_mask]
+    sliced_pos_ids = unpruned_active_pos[:, keep_mask_global]
+
+    # 5. Populate back into the final pruned layout in-place (avoiding new tensor allocation)
+    position_ids[:, attention_mask == 1] = sliced_pos_ids
+
+    return position_ids
+
+
 def _get_input_embeds(
     model: "Qwen3VLForConditionalGeneration",
     input_ids: torch.LongTensor,
@@ -144,12 +206,45 @@ def _get_input_embeds(
     pixel_values_videos: Optional[torch.FloatTensor] = None,
     image_grid_thw: Optional[torch.LongTensor] = None,
     video_grid_thw: Optional[torch.LongTensor] = None,
+    vision_token_keep_mask: Optional[torch.BoolTensor] = None,
 ):
     inputs_embeds = model.get_input_embeddings()(input_ids)
     image_mask, video_mask = None, None
     if pixel_values is not None:
         pixel_values = pixel_values.type(model.visual.dtype)
         image_embeds, deepstack_image_embeds = unpack_visual_output(model.visual(pixel_values, grid_thw=image_grid_thw))
+
+        # Apply visual token pruning (experimental support for Qwen3-VL)
+        # vision_token_keep_mask is a flat 1D bool tensor over ALL image tokens across the batch.
+        # image_positions from .nonzero() enumerates tokens in row-major order (batch 0 first,
+        # then batch 1, etc.), which matches the flat order of image_embeds from the visual
+        # encoder — so indexing with the flat mask is correct for any batch size.
+        if vision_token_keep_mask is not None:
+            from verl.models.vision_token_pruning.sequence_compressor import prune_visual_embedding_outputs
+
+            n_image_tokens_total = (input_ids == model.config.image_token_id).sum().item()
+            if vision_token_keep_mask.numel() != n_image_tokens_total:
+                raise ValueError(
+                    f"vision_token_keep_mask length ({vision_token_keep_mask.numel()}) does not match "
+                    f"total image token count in batch ({n_image_tokens_total})."
+                )
+            image_embeds, deepstack_image_embeds = prune_visual_embedding_outputs(
+                image_embeds, deepstack_image_embeds, vision_token_keep_mask
+            )
+            # Locate image tokens in input_ids and set dropped positions to 0
+            image_positions = (input_ids == model.config.image_token_id).nonzero(as_tuple=False)
+            if image_positions.numel() > 0:
+                drop_positions = image_positions[~vision_token_keep_mask.to(image_positions.device)]
+                if drop_positions.numel() > 0:
+                    # Zero out dropped positions in attention_mask and input_ids.
+                    # The masked_scatter below will overwrite kept positions with image_embeds;
+                    # no need to re-embed the full input_ids.
+                    if attention_mask is not None:
+                        attention_mask = attention_mask.clone()
+                        attention_mask[drop_positions[:, 0], drop_positions[:, 1]] = 0
+                    input_ids = input_ids.clone()
+                    input_ids[drop_positions[:, 0], drop_positions[:, 1]] = 0
+
         n_image_tokens = (input_ids == model.config.image_token_id).sum().item()
         n_image_features = image_embeds.shape[0]
         if n_image_tokens != n_image_features:
@@ -248,8 +343,16 @@ def qwen3_vl_base_forward(
     video_grid_thw: Optional[torch.LongTensor] = None,
     **kwargs,
 ):
+    vision_token_keep_mask = kwargs.pop("vision_token_keep_mask", None)
     input_kwargs = _get_input_embeds(
-        self, input_ids, attention_mask, pixel_values, pixel_values_videos, image_grid_thw, video_grid_thw
+        self,
+        input_ids,
+        attention_mask,
+        pixel_values,
+        pixel_values_videos,
+        image_grid_thw,
+        video_grid_thw,
+        vision_token_keep_mask=vision_token_keep_mask,
     )  # avoid lora module having multiple keyword arguments
     kwargs.update(input_kwargs)
     return self.language_model(
